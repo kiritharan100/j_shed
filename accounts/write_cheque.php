@@ -148,13 +148,13 @@ $end_datetime = $end_date . ' 23:59:59';
                 <label>Bank Account</label>
                 <select name="bank_account" id="bank_account" class="form-control" required>
                   <option value="">-- Select Bank --</option>
-                  <?php while ($b = mysqli_fetch_assoc($banks)) echo "<option value=\"{$b['ca_id']}\">{$b['ca_name']}</option>"; ?>
+                  <?php while ($b = mysqli_fetch_assoc($banks)) echo "<option value=\"{$b['ca_id']}\" data-account-group=\"Cash in Hand\">{$b['ca_name']}</option>"; ?>
                 </select>
               </div>
             </div>
             <div class="col-md-2">
               <div class="form-group">
-                <label>Cheque No.</label>
+                <label id="cheque_number_label" for="cheque_number">Cheque No.</label>
                 <input type="text" id="cheque_number" name="cheque_number" class="form-control" required>
               </div>
             </div>
@@ -313,8 +313,16 @@ $('#payee').on('change', function () {
   }
 });
 
+function updateChequeNumberLabel() {
+  const isCashInHand = $('#bank_account option:selected').data('account-group') === 'Cash in Hand';
+  $('#cheque_number_label').text(isCashInHand ? 'Voucher Number' : 'Cheque No.');
+  $('#cheque_number').prop('required', !isCashInHand);
+}
+
 $('#bank_account').on('change', function () {
   const bankId = $(this).val();
+  updateChequeNumberLabel();
+
   if (bankId) {
     $.ajax({
       url: 'ajax/get_next_cheque_number.php',
