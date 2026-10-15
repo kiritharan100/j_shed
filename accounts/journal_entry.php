@@ -1,4 +1,6 @@
 <?php include("header.php");
+require_once __DIR__ . '/transaction_date_cookie.php';
+$transaction_date = get_shared_transaction_date();
 
 $start_date = $_GET['start_date'] ?? date('Y-m-d', strtotime('-30 days'));
 $end_date   = $_GET['end_date'] ?? date('Y-m-d');
@@ -72,7 +74,7 @@ $journals = mysqli_query($con, "
         <div class="modal-header"><h5 class="modal-title">Journal Entry</h5></div>
         <div class="modal-body">
           <div class="row mb-2">
-            <div class="col-md-3"><label>Date</label><input type="date" name="journal_date" class="form-control" value="<?=date('Y-m-d')?>"></div>
+            <div class="col-md-3"><label>Date</label><input type="date" name="journal_date" class="form-control" value="<?= htmlspecialchars($transaction_date) ?>"></div>
             <div class="col-md-9"><label>Memo</label><input type="text" required name="memo" class="form-control">
         <input type="hidden" name="location_id" value="<?= $location_id ?>"></div>
           </div><br>

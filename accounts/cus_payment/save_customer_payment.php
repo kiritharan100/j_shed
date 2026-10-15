@@ -1,5 +1,6 @@
 <?php
 include("../../db.php");
+require_once __DIR__ . '/../transaction_date_cookie.php';
 session_start();
 $total_cash = 0;
 $total_other_cash = 0;
@@ -100,6 +101,7 @@ $loc_totals = [];
 
 }
 
+  remember_shared_transaction_date($rec_date);
   echo json_encode(["status" => "success", "message" => "Payment recorded successfully."]);
 } else {
   echo json_encode(["status" => "error", "message" => mysqli_error($con)]);

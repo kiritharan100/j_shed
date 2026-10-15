@@ -1,6 +1,7 @@
 <?php
 include("../../db.php");
 include("../../auth.php");
+require_once __DIR__ . '/../transaction_date_cookie.php';
 
 header('Content-Type: application/json');
 
@@ -50,5 +51,6 @@ foreach ($entries as $query) {
     }
 }
 
+remember_shared_transaction_date($t_date);
 echo json_encode(['status' => 'success', 'message' => 'Deposit recorded successfully.']);
 ?>

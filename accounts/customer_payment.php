@@ -1,5 +1,7 @@
 <?php
 include("header.php");
+require_once __DIR__ . '/transaction_date_cookie.php';
+$transaction_date = get_shared_transaction_date();
 $banks = mysqli_query($con, "SELECT ca_id, ca_name FROM acc_chart_of_accounts WHERE ca_group='Cash in Hand' ORDER BY ca_name ASC");
 $today = date('Y-m-d');
 $start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-01', strtotime('-1 month'));
@@ -134,7 +136,7 @@ $end_date   = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-t', strto
 
             <div class="col-md-2">
               <label>Receipt Date</label>
-              <input type="date" name="rec_date" class="form-control" value="<?= date('Y-m-d') ?>">
+              <input type="date" name="rec_date" class="form-control" value="<?= htmlspecialchars($transaction_date) ?>">
             </div>
 
             <div class="col-md-2">

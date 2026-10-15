@@ -1,4 +1,6 @@
 <?php include("header.php");
+require_once __DIR__ . '/transaction_date_cookie.php';
+$transaction_date = get_shared_transaction_date();
 
 $start_date = $_GET['start_date'] ?? date('Y-m-d', strtotime('-31 days'));
 $end_date   = $_GET['end_date'] ?? date('Y-m-t');
@@ -101,7 +103,7 @@ $accounts = mysqli_query($con, "SELECT ca_id, ca_name FROM acc_chart_of_accounts
           <div class="alert alert-info" id="cashBalance">Loading balance...</div>
           <div class="form-group">
             <label>Date</label>
-            <input type="date" name="deposit_date" class="form-control" value="<?= date('Y-m-d') ?>" required>
+            <input type="date" name="deposit_date" class="form-control" value="<?= htmlspecialchars($transaction_date) ?>" required>
           </div>
           <div class="form-group">
             <label>To Account</label>

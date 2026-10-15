@@ -1,6 +1,7 @@
 <?php
 include("../../db.php");
 include("../../auth.php");
+require_once __DIR__ . '/../transaction_date_cookie.php';
 $location_id = $_POST['location_id'];
 $journal_id = $_POST['id'] ?? 0;
 $date = $_POST['journal_date'];
@@ -50,4 +51,5 @@ foreach ($category as $i => $acc_id) {
 }
 
 UserLog("3", "Journal Entry", "Memo: $memo");
+remember_shared_transaction_date($date);
 echo "Journal saved.";

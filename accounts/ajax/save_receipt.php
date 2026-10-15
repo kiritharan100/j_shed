@@ -3,6 +3,7 @@
  
 include("../../db.php");
 include("../../auth.php");
+require_once __DIR__ . '/../transaction_date_cookie.php';
 
 $re_id         = isset($_POST['re_id']) ? intval($_POST['re_id']) : 0;
 $payee         = isset($_POST['payee']) && !empty($_POST['payee']) ? mysqli_real_escape_string($con, $_POST['payee']) : '';
@@ -94,4 +95,5 @@ $action = $re_id > 0 && isset($_POST['re_id']) ? "receipt updated" : "New receip
 $detail = "$payee - Cheque #$cheque_number";
 UserLog("3", $action, $detail);
 
+remember_shared_transaction_date($payment_date);
 echo "Cheque saved successfully.";

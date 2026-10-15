@@ -1,5 +1,7 @@
 <?php
 include("header.php");
+require_once __DIR__ . '/transaction_date_cookie.php';
+$transaction_date = get_shared_transaction_date();
 
 $payees = mysqli_query($con, "SELECT DISTINCT customer_name as ca_name,c_id FROM mange_customer WHERE status=1 AND c_id > 3 ORDER BY customer_name");
 
@@ -165,7 +167,7 @@ $supplier_note = ($row['supplier_id'] > 0 && isset($row['supplier_name']) && $ro
             <div class="col-md-3">
               <div class="form-group">
                 <label>Date</label>
-                <input type="date" name="payment_date" class="form-control" value="<?php echo date('Y-m-d'); ?>" required>
+                <input type="date" name="payment_date" class="form-control" value="<?= htmlspecialchars($transaction_date) ?>" required>
               </div>
             </div>
           </div>
@@ -344,6 +346,7 @@ function bindAccountChangeListener() {
   // Clear form fields manually instead of form.reset()
 //   $('#chequeForm').find("input[type=text], input[type=date], input[type=number], textarea").val('');
 $('#chequeForm').find("input[type=text], input[type=number], textarea").val('');
+  $('#chequeForm input[name="payment_date"]').val(<?= json_encode($transaction_date) ?>);
   $('#chequeForm').find("select").val('').trigger('change');
 
   // Reset lines
