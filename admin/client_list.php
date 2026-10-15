@@ -1,4 +1,7 @@
-<?php include 'header.php'; ?>
+<?php include 'header.php';
+require_once '../ensure_business_start_date.php';
+ensure_business_start_date_column($con);
+?>
 <?php 
  
 $user_license = $_SESSION['customer'];
@@ -14,10 +17,11 @@ $user_license = $_SESSION['customer'];
    $contact_email = $_POST['contact_email'];
    $contact_phone = $_POST['contact_phone'];
    $regNumber = $_POST['regNumber'];
+   $business_start_date = mysqli_real_escape_string($con, $_POST['business_start_date'] ?? '');
    $md5_client = md5(time());
   
-  $update="INSERT INTO `client_registration`(`md5_client`, `user_license`, `client_id`, `client_name`, `client_type`, `client_email`, `client_phone`, `contact_name`, `contact_email`, `contact_phone`,regNumber) 
-   VALUES ('$md5_client','$user_license','$client_id1','$client_name','$client_type','$client_email','$client_phone','$contact_name','$contact_email',' $contact_phone','$regNumber')";
+  $update="INSERT INTO `client_registration`(`md5_client`, `user_license`, `client_id`, `client_name`, `client_type`, `client_email`, `client_phone`, `contact_name`, `contact_email`, `contact_phone`,regNumber,business_start_date) 
+   VALUES ('$md5_client','$user_license','$client_id1','$client_name','$client_type','$client_email','$client_phone','$contact_name','$contact_email',' $contact_phone','$regNumber',NULLIF('$business_start_date',''))";
    mysqli_query($con, $update);
   
 echo ' <script>  
@@ -35,10 +39,11 @@ if(isset($_POST['edit_client'])){
    $contact_email = $_POST['contact_email'];
    $contact_phone = $_POST['contact_phone'];
    $regNumber = $_POST['regNumber'];
+   $business_start_date = mysqli_real_escape_string($con, $_POST['business_start_date'] ?? '');
     $region = $_POST['region'];
    $md5_client = $_POST['md5_client'];
    $update="UPDATE  client_registration SET  client_id='$client_id1',client_name='$client_name',client_type='$client_type',client_email='$client_email',client_phone='$client_phone'
-   ,contact_name='$contact_name',contact_email='$contact_email',contact_phone='$contact_phone',regNumber='$regNumber',region='$region' WHERE md5_client ='$md5_client'";
+   ,contact_name='$contact_name',contact_email='$contact_email',contact_phone='$contact_phone',regNumber='$regNumber',region='$region',business_start_date=NULLIF('$business_start_date','') WHERE md5_client ='$md5_client'";
    mysqli_query($con, $update);
   
 echo ' <script>  
@@ -179,6 +184,7 @@ while($row = mysqli_fetch_assoc($result)) {
                 $("#edit-form [name='client_name']").val(response.client_name);
                 $("#edit-form [name='client_id']").val(response.client_id);
                 $("#edit-form [name='client_type']").val(response.client_type);
+                $("#edit-form [name='business_start_date']").val(response.business_start_date || '');
                 $("#edit-form [name='client_email']").val(response.client_email);
                 $("#edit-form [name='client_phone']").val(response.client_phone);
                 $("#edit-form [name='contact_name']").val(response.contact_name);
@@ -365,6 +371,9 @@ success: function (response) {
                      </select>
                   </div>
                </div>
+               <div class="form-group row"><label class="col-xl-4 col-lg-4 col-md-12 pt-2 label-form">Business Start Date</label>
+                  <div class="col-xl-8 col-lg-8 col-md-12"><input class="form-control" type="date" name="business_start_date"></div>
+               </div>
                <div  class="form-group row"><label  class="col-xl-4 col-lg-4 col-md-12 label-form">District *</label>
                   <div  class="col-xl-8 col-lg-8 col-md-12 selectdiv" >
                      <select   class="form-control" style="margin:5px;" required name='regNumber'>
@@ -378,8 +387,6 @@ success: function (response) {
                      </select>
                   </div>
                </div>
-               
-               
                
             
              
@@ -464,6 +471,9 @@ success: function (response) {
 
                      </select>
                   </div>
+               </div>
+               <div class="form-group row"><label class="col-xl-4 col-lg-4 col-md-12 pt-2 label-form">Business Start Date</label>
+                  <div class="col-xl-8 col-lg-8 col-md-12"><input class="form-control" type="date" name="business_start_date" id="edit-business_start_date"></div>
                </div>
                
                
