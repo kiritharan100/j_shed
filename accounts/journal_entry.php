@@ -1,17 +1,22 @@
 <?php include("header.php");
 require_once __DIR__ . '/transaction_date_cookie.php';
 $transaction_date = get_shared_transaction_date();
-
-$start_date = $_GET['start_date'] ?? date('Y-m-d', strtotime('-30 days'));
-$end_date   = $_GET['end_date'] ?? date('Y-m-d');
-$start_datetime = $start_date . ' 00:00:00';
-$end_datetime = $end_date . ' 23:59:59';
-
-$journals = mysqli_query($con, "
-  SELECT * FROM acc_journal 
-  WHERE journal_date BETWEEN '$start_datetime' AND '$end_datetime'  AND location_id = '$location_id'
-  ORDER BY id DESC LIMIT 100
-");
+$period_query = mysqli_query($con, "SELECT id, perid_from, period_to FROM accounts_accounting_period WHERE location_id = " . (int)$location_id . " AND status = 1 ORDER BY perid_from DESC");
+$periods = [];
+if ($period_query) while ($period_row = mysqli_fetch_assoc($period_query)) $periods[] = $period_row;
+$latest_period = $periods[0] ?? null;
+$period_cookie_key = 'acc_period_' . (int)$location_id;
+$period_cookie = null;
+if (!empty($_COOKIE[$period_cookie_key])) {
+  $parts = explode('|', (string)$_COOKIE[$period_cookie_key]);
+  if (count($parts) >= 3) $period_cookie = ['selection' => urldecode($parts[0]), 'start' => urldecode($parts[1]), 'end' => urldecode($parts[2])];
+}
+$start_date = $_GET['start_date'] ?? ($period_cookie['start'] ?? ($latest_period['perid_from'] ?? date('Y-m-d', strtotime('-30 days'))));
+$end_date = $_GET['end_date'] ?? ($period_cookie['end'] ?? ($latest_period['period_to'] ?? date('Y-m-d')));
+$start_date = date('Y-m-d', strtotime($start_date));
+$end_date = date('Y-m-d', strtotime($end_date));
+$period_selection = $period_cookie['selection'] ?? ($latest_period ? 'current' : 'custom');
+if (!in_array($period_selection, ['custom', 'current'], true) && !preg_match('/^period_\d+$/', $period_selection)) $period_selection = 'custom';
 
 ?>
 
@@ -22,43 +27,33 @@ $journals = mysqli_query($con, "
     <div class="row">
       <div class="col-md-12">
         <div class="card card-block">
-          <div class="form-inline mb-3">
-            <label>Start Date</label>&nbsp;
-            <input type="date" class="form-control" name="start_date" value="<?= $start_date ?>">&nbsp;&nbsp;
-            <label>End Date</label>&nbsp;
-            <input type="date" class="form-control" name="end_date" value="<?= $end_date ?>">&nbsp;
-            <button type="submit" class="btn btn-primary">Filter</button>
-            <button class="btn btn-success ml-auto" onclick="openJournalModal()">+ Add Journal</button>
-                              <button type='button' id="exportButton" filename='<?php echo "Journal_list_".$start_date."_".$end_date; ?>.xlsx' class="btn btn-primary"><i class="ti-cloud-down"></i> Export</button>
-
-          </div> <hr>
+          <form id="journalFilterForm" class="form-inline mb-3" onsubmit="return false;" style="gap:7px;">
+            <button type="button" class="btn btn-success btn-sm" onclick="openJournalModal()">+ Add Journal</button>
+            <button type="button" id="journalExportButton" class="btn btn-primary btn-sm"><i class="ti-cloud-down"></i> Export</button>
+            <label for="accountingPeriodSelect" class="mb-0">Period</label>
+            <select id="accountingPeriodSelect" class="form-control form-control-sm" style="width:220px;">
+              <option value="custom" <?= $period_selection === 'custom' ? 'selected' : '' ?>>Custom</option>
+              <?php if ($latest_period): ?>
+              <option value="current" data-start="<?= htmlspecialchars($latest_period['perid_from']) ?>" data-end="<?= htmlspecialchars($latest_period['period_to']) ?>" <?= $period_selection === 'current' ? 'selected' : '' ?>>Current <?= date('d/m/Y', strtotime($latest_period['perid_from'])) ?> - <?= date('d/m/Y', strtotime($latest_period['period_to'])) ?></option>
+              <?php endif; ?>
+              <?php foreach ($periods as $period): if ($latest_period && (int)$period['id'] === (int)$latest_period['id']) continue; $period_value = 'period_' . (int)$period['id']; ?>
+              <option value="<?= $period_value ?>" data-start="<?= htmlspecialchars($period['perid_from']) ?>" data-end="<?= htmlspecialchars($period['period_to']) ?>" <?= $period_selection === $period_value ? 'selected' : '' ?>><?= date('d/m/Y', strtotime($period['perid_from'])) ?> - <?= date('d/m/Y', strtotime($period['period_to'])) ?></option>
+              <?php endforeach; ?>
+            </select>
+            <label for="journalStartDate" class="mb-0">From</label>
+            <input type="date" id="journalStartDate" class="form-control form-control-sm" value="<?= htmlspecialchars($start_date) ?>">
+            <label for="journalEndDate" class="mb-0">To</label>
+            <input type="date" id="journalEndDate" class="form-control form-control-sm" value="<?= htmlspecialchars($end_date) ?>">
+            <button type="button" id="journalFilterButton" class="btn btn-primary btn-sm">Filter</button>
+            <label class="mb-0 ml-2"><input type="checkbox" id="showDeletedJournals"> Show Cancelled</label>
+          </form><hr>
           <table id="example" class="table table-bordered table-sm">
             <thead class="thead-dark">
               <tr>
-                <th>#</th>
-                 <th>Ref No</th>
-                 <th>Journal Date</th><th>Memo</th><th>Debit</th><th>Credit</th><th>Status</th><th>Action</th>
+                <th>#</th><th>Journal Date</th><th>Ref No</th><th>Memo</th><th>Amount</th><th>Status</th><th>Action</th>
               </tr>
             </thead>
-            <tbody>
-              <?php 
-              $count = 1;
-              while ($j = mysqli_fetch_assoc($journals)) {
-                $style = $j['status'] == 0 ? "class='table-danger cancelled-row'" : "";
-                echo "<tr $style>
-                  <td>{$count}</td>
-                  <td align='center'>J{$j['loc_no']}</td>
-                  <td>{$j['journal_date']}</td>
-                  <td>{$j['memo']}</td>
-                  <td align='right'>".number_format($j['total_debit'], 2)."</td>
-                  <td align='right'>".number_format($j['total_credit'], 2)."</td>
-                  <td align='center'>".($j['status'] ? 'Posted' : 'Cancelled')."</td>
-                  <td align='center'><button class='btn btn-primary btn-sm' style='padding: 2px 8px; font-size: 12px;' onclick='editJournal({$j['id']})'>Edit</button></td>
-                </tr>";
-                $count++;
-              }
-              ?>
-            </tbody>
+            <tbody></tbody>
           </table>
         </div>
       </div>

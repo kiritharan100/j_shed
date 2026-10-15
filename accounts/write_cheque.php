@@ -9,13 +9,45 @@ $payees = mysqli_query($con, "SELECT DISTINCT supplier_name as ca_name,sup_id FR
 
 $banks = mysqli_query($con, "SELECT ca_id, ca_name FROM acc_chart_of_accounts WHERE ca_group='Cash in Hand' AND ca_id != 44  ORDER BY ca_name ASC");
 // $start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-1');
-$start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-d', strtotime('-31 days')); // 29 days ago (so total 30 days including today)
-$end_date   = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-t');
-
-$start_datetime = $start_date . ' 00:00:00';
-$end_datetime = $end_date . ' 23:59:59';
+$period_result = mysqli_query($con, "SELECT id, perid_from, period_to FROM accounts_accounting_period WHERE location_id = " . (int)$location_id . " AND status = 1 ORDER BY perid_from DESC");
+$periods = [];
+if ($period_result) while ($period_row = mysqli_fetch_assoc($period_result)) $periods[] = $period_row;
+$latest_period = $periods[0] ?? null;
+$period_cookie_key = 'acc_period_' . (int)$location_id;
+$period_cookie = null;
+if (!empty($_COOKIE[$period_cookie_key])) {
+  $parts = explode('|', (string)$_COOKIE[$period_cookie_key]);
+  if (count($parts) >= 3) $period_cookie = ['selection' => urldecode($parts[0]), 'start' => urldecode($parts[1]), 'end' => urldecode($parts[2])];
+}
+$start_date = $_GET['start_date'] ?? ($period_cookie['start'] ?? ($latest_period['perid_from'] ?? date('Y-m-d', strtotime('-30 days'))));
+$end_date = $_GET['end_date'] ?? ($period_cookie['end'] ?? ($latest_period['period_to'] ?? date('Y-m-d')));
+$start_date = date('Y-m-d', strtotime($start_date));
+$end_date = date('Y-m-d', strtotime($end_date));
+$period_selection = $period_cookie['selection'] ?? 'custom';
+if (!$period_cookie && $latest_period) $period_selection = 'current';
+if (!in_array($period_selection, ['custom', 'current'], true) && !preg_match('/^period_\d+$/', $period_selection)) $period_selection = 'custom';
 
 ?>
+
+<style>
+  #chequeFilterBar { gap: 7px !important; padding: 9px 10px; background: #f7f8fa; border: 1px solid #dee2e6; border-radius: 4px; }
+  #chequeFilterBar label { margin: 0; font-size: 13px; font-weight: 600; white-space: nowrap; }
+  #chequeFilterBar .form-control { height: 32px; padding: 4px 8px; font-size: 13px; }
+  #chequeFilterBar #chequePeriod { width: 205px !important; }
+  #chequeFilterBar #chequeStartDate, #chequeFilterBar #chequeEndDate { width: 145px; }
+  #chequeFilterBar .btn { height: 32px; padding: 4px 11px; font-size: 13px; line-height: 22px; }
+  #example { width: 100% !important; margin-bottom: 0; font-size: 14px; }
+  #example thead th { padding: 7px 8px; font-size: 13px; font-weight: 600; white-space: nowrap; vertical-align: middle; }
+  #example tbody tr { height: 25px !important; }
+  #example tbody td { padding: 1px 5px !important; height: 25px !important; font-size: 13px; line-height: 1 !important; vertical-align: middle; }
+  #example select.cheque-action.form-control.form-control-sm { min-width: 100px; width: 100px; height: 21px !important; min-height: 21px !important; padding: 0 4px !important; color: #333; background-color: #fff !important; border: 1px solid #ced4da; border-radius: 3px; font-size: 11px; line-height: 1 !important; }
+  #example .cheque-action:focus { background-color: #fff; border-color: #80bdff; outline: 0; box-shadow: 0 0 0 2px rgba(0,123,255,.15); }
+  #chequeTotalPayments { font-size: 14px; }
+  @media (max-width: 767px) {
+    #chequeFilterBar #chequePeriod { width: 100% !important; }
+    #chequeFilterBar #chequeStartDate, #chequeFilterBar #chequeEndDate { flex: 1 1 130px; }
+  }
+</style>
 
 <div class="content-wrapper">
   <div class="container-fluid">
@@ -27,21 +59,26 @@ $end_datetime = $end_date . ' 23:59:59';
       <div class="col-md-12">
         <div class="card">
           <div class="card-block">
-            <div align='right'>
-
-             <form method="get" class="form-inline mb-3">
-      <label for="start_date">Start Date:&nbsp;</label>
-    <input type="date" name="start_date" class="form-control mr-3" value="<?= htmlspecialchars($start_date) ?>" required>
-      <label for="end_date">End Date:&nbsp;</label>
-      <input type="date" name="end_date" class="form-control mr-3" value="<?=htmlspecialchars($end_date)?>" required>
-      <button type="submit" class="btn btn-primary mr-3">Filter</button>
-
-
+            <div id="chequeFilterBar" class="d-flex flex-wrap align-items-center mb-3">
                 <button type="button" class="btn btn-success" onclick="openChequeModal()">+ Write Cheque</button>
-                  <button type='button' id="exportButton" filename='<?php echo "Cheque_Payment_".$start_date."_".$end_date; ?>.xlsx' class="btn btn-primary"><i class="ti-cloud-down"></i> Export</button>
-    </form>  
-              <!-- <button class="btn btn-success" data-toggle="modal" data-target="#chequeModal" onclick="openChequeModal()">+ Write Cheque</button> -->
+                <label for="chequePeriod" class="mb-0">Period</label>
+                <select id="chequePeriod" class="form-control" style="width:220px;">
+                    <option value="custom" <?= $period_selection === 'custom' ? 'selected' : '' ?>>Custom</option>
+                    <?php if ($latest_period): ?>
+                    <option value="current" data-start="<?= htmlspecialchars($latest_period['perid_from']) ?>" data-end="<?= htmlspecialchars($latest_period['period_to']) ?>" <?= $period_selection === 'current' ? 'selected' : '' ?>>Current <?= date('d/m/Y', strtotime($latest_period['perid_from'])) ?> - <?= date('d/m/Y', strtotime($latest_period['period_to'])) ?></option>
+                    <?php endif; ?>
+                    <?php foreach ($periods as $period): if ($latest_period && (int)$period['id'] === (int)$latest_period['id']) continue; $period_value = 'period_' . (int)$period['id']; ?>
+                    <option value="<?= $period_value ?>" data-start="<?= htmlspecialchars($period['perid_from']) ?>" data-end="<?= htmlspecialchars($period['period_to']) ?>" <?= $period_selection === $period_value ? 'selected' : '' ?>><?= date('d/m/Y', strtotime($period['perid_from'])) ?> - <?= date('d/m/Y', strtotime($period['period_to'])) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <label for="chequeStartDate" class="mb-0">From</label>
+                <input type="date" id="chequeStartDate" class="form-control" value="<?= htmlspecialchars($start_date) ?>">
+                <label for="chequeEndDate" class="mb-0">To</label>
+                <input type="date" id="chequeEndDate" class="form-control" value="<?= htmlspecialchars($end_date) ?>">
+                <button type="button" id="chequeFilter" class="btn btn-primary">Filter</button>
+                <button type='button' id="exportButton" filename='Cheque_Payment_<?= htmlspecialchars($start_date . '_' . $end_date) ?>.xlsx' class="btn btn-primary"><i class="ti-cloud-down"></i> Export</button>
             </div>
+              <!-- <button class="btn btn-success" data-toggle="modal" data-target="#chequeModal" onclick="openChequeModal()">+ Write Cheque</button> -->
             <hr>
                 <table id="example" class="table table-bordered table-striped table-sm">
               <thead class="thead-dark">
@@ -57,60 +94,11 @@ $end_datetime = $end_date . ' 23:59:59';
                   <th>Action</th>
                 </tr>
               </thead>
-              <tbody>
-                <?php
-                $count = 1;
-                $total_active = 0;
-                $cheques = mysqli_query($con, "SELECT c.*, coa.ca_name AS from_account, s.supplier_name
-                  FROM acc_cheque c
-                  LEFT JOIN acc_chart_of_accounts coa ON c.cr_acc_id = coa.ca_id
-                  LEFT JOIN manage_supplier s ON c.supplier_id = s.sup_id
-                  WHERE c.ch_date BETWEEN '$start_datetime' AND '$end_datetime'   AND c.location_id = '$location_id'
-                  ORDER BY c.ch_id DESC LIMIT 100");
-
-                while ($row = mysqli_fetch_assoc($cheques)) {
-                    $is_cancelled = $row['status'] == 0;
-                    $row_style = $is_cancelled ? 'class="table-danger cancelled-row"' : '';
-
-                    $ch_id = $row['ch_id'];
-                    $posted_accounts = mysqli_query($con, "SELECT d.dr_acc_id, a.ca_name 
-                      FROM acc_cheque_detail d 
-                      LEFT JOIN acc_chart_of_accounts a ON d.dr_acc_id = a.ca_id
-                      WHERE d.ch_id = '$ch_id'");
-
-                    $names = [];
-                    while ($pa = mysqli_fetch_assoc($posted_accounts)) {
-                        $names[] = $pa['ca_name'];
-                    }
-
-                    $supplier_note = ($row['supplier_id'] > 0 && $row['supplier_name']) ? " : " . $row['supplier_name'] : "";
-                    $posted_to = count($names) == 1 ? $names[0] . $supplier_note : "- Split -$supplier_note";
-
-                    $total = number_format($row['sub_total'], 2);
-                    if (!$is_cancelled) {
-                        $total_active += $row['sub_total'];
-                    }
-
-                    echo "<tr $row_style>
-                          <td align='center'>{$count}</td>
-                             <td align='center'>CH{$row['loc_no']}</td>
-                          <td>{$row['ch_date']}</td>
-                             <td>{$row['cheque_number']}</td>
-                          <td>{$row['from_account']}</td>
-                       
-                          <td>{$posted_to}</td>
-                          <td align='right'>{$total}</td>
-                          <td align='center'>" . ($row['status'] == 1 ? 'Posted' : 'Cancelled') . "</td>
-                          <td align='center'><button class='btn btn-primary btn-sm' style='padding: 2px 8px; font-size: 12px;' onclick='editCheque({$row['ch_id']})'>Edit</button></td>
-                        </tr>";
-                    $count++;
-                }
-                ?>
-              </tbody>
+              <tbody></tbody>
             </table>
 
             <div class="text-right font-weight-bold mt-2">
-              Total   Payments: <?= number_format($total_active, 2) ?>
+              Total Payments: <span id="chequeTotalPayments">0.00</span>
             </div>
 
           </div>
@@ -163,7 +151,7 @@ $end_datetime = $end_date . ' 23:59:59';
             <div class="col-md-3">
               <div class="form-group">
                 <label>Date</label>
-                <input type="date" name="payment_date" class="form-control" value="<?= htmlspecialchars($transaction_date) ?>" required>
+                <input type="date" id="payment_date" name="payment_date" class="form-control" value="<?= htmlspecialchars($transaction_date) ?>" required>
               </div>
             </div>
           </div>
@@ -225,6 +213,12 @@ function loadAccounts() {
 }
 
  function openChequeModal() {
+  $('#chequeForm input[name="ch_id"]').remove();
+  $('#chequeForm input, #chequeForm select, #chequeForm textarea').prop('disabled', false);
+  $('#chequeForm .processing_button').show();
+  $('#chequeForm .modal-footer').show();
+  $('#deleteBtn, #cancelledAlert').remove();
+  $('#chequeModalLabel').text('Write Cheque');
   // Clear form fields manually instead of form.reset()
 //   $('#chequeForm').find("input[type=text], input[type=date], input[type=number], textarea").val('');
 $('#chequeForm').find("input[type=text], input[type=number], textarea").val('');
@@ -300,10 +294,102 @@ $('#chequeModal').on('shown.bs.modal', function () {
   });
 });
 
+let chequeTable;
+function saveChequePeriodCookie() {
+  const cookieValue = [$('#chequePeriod').val() || 'custom', $('#chequeStartDate').val(), $('#chequeEndDate').val()]
+    .map(value => encodeURIComponent(value || '')).join('|');
+  document.cookie = <?= json_encode($period_cookie_key) ?> + '=' + cookieValue + '; path=/; max-age=' + (180 * 86400) + '; SameSite=Lax';
+}
+
+function applyChequeFilter() {
+  saveChequePeriodCookie();
+  if (chequeTable) chequeTable.ajax.reload();
+}
+
 $(document).ready(function() {
-   $('#example').DataTable({
-        "pageLength": 50
+  chequeTable = $('#example').DataTable({
+    processing: true,
+    serverSide: true,
+    pageLength: 50,
+    order: [[2, 'desc']],
+    ajax: {
+      url: 'ajax/list_cheques.php',
+      type: 'POST',
+      data: function(request) {
+        request.start_date = $('#chequeStartDate').val();
+        request.end_date = $('#chequeEndDate').val();
+      },
+      dataSrc: function(response) {
+        $('#chequeTotalPayments').text(response.totalPayments || '0.00');
+        return response.data || [];
+      }
+    },
+    columns: [
+      { data: 'index', orderable: false, searchable: false },
+      { data: 'ref_no' },
+      { data: 'date' },
+      { data: 'cheque_no' },
+      { data: 'from_account' },
+      { data: 'paid_to' },
+      { data: 'amount', className: 'text-right' },
+      { data: 'status', orderable: false },
+      { data: 'action', orderable: false, searchable: false }
+    ],
+    createdRow: function(row, data) {
+      if (Number(data.status_value) === 0) $(row).addClass('table-danger');
+    }
+  });
+
+  saveChequePeriodCookie();
+  $('#chequePeriod').on('change', function() {
+    const option = $(this).find(':selected');
+    if (this.value !== 'custom') {
+      $('#chequeStartDate').val(option.data('start'));
+      $('#chequeEndDate').val(option.data('end'));
+    }
+    applyChequeFilter();
+  });
+  $('#chequeFilter').on('click', function() {
+    $('#chequePeriod').val('custom');
+    applyChequeFilter();
+  });
+  $('#chequeStartDate, #chequeEndDate').on('change', function() {
+    $('#chequePeriod').val('custom');
+    applyChequeFilter();
+  });
+  $('#exportButton').on('click', function() {
+    const rows = chequeTable.rows({ search: 'applied' }).data().toArray();
+    const values = [['#', 'Ref No', 'Date', 'Cheque No', 'Paid From Account', 'Paid To', 'Amount', 'Status'], ...rows.map(row => [row.index, row.ref_no, row.date, row.cheque_no, row.from_account, row.paid_to, row.amount, row.status])];
+    if (!window.XLSX) {
+      notify('danger', 'Export unavailable', 'The spreadsheet library did not load.');
+      return;
+    }
+    const worksheet = XLSX.utils.aoa_to_sheet(values);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Cheques');
+    XLSX.writeFile(workbook, 'Cheque_Payment_' + $('#chequeStartDate').val() + '_' + $('#chequeEndDate').val() + '.xlsx');
+  });
+});
+
+$(document).on('change', '.cheque-action', function() {
+  const action = this.value;
+  const id = Number($(this).data('id'));
+  const status = Number($(this).data('status'));
+  $(this).val('');
+  if (action === 'view') editCheque(id, true);
+  if (action === 'edit' && status === 1) editCheque(id, false);
+  if (action === 'cancel' && status === 1) {
+    const confirmCancel = window.Swal && typeof window.Swal.fire === 'function'
+      ? window.Swal.fire({ title: 'Cancel cheque?', text: 'This will cancel the cheque.', icon: 'warning', showCancelButton: true, confirmButtonText: 'Yes, cancel it' }).then(result => result.isConfirmed)
+      : Promise.resolve(window.confirm('Cancel this cheque?'));
+    confirmCancel.then(function(confirmed) {
+      if (!confirmed) return;
+      $.post('ajax/delete_cheque.php', { ch_id: id }, function(message) {
+        notify('success', 'Cancelled', message);
+        chequeTable.ajax.reload(null, false);
+      }).fail(function() { notify('danger', 'Error', 'Could not cancel this cheque.'); });
     });
+  }
 });
 
 
@@ -345,13 +431,19 @@ $('#bank_account').on('change', function () {
 <script>
   //edit cheque 
 
-  function editCheque(ch_id) {
+  function editCheque(ch_id, readOnly = false) {
+  $('#chequeForm input[name="ch_id"]').remove();
+  $('#chequeForm input, #chequeForm select, #chequeForm textarea').prop('disabled', false);
+  $('#chequeForm .processing_button').show();
+  $('#chequeForm .modal-footer').show();
+  $('#deleteBtn, #cancelledAlert').remove();
   $.ajax({
     url: 'ajax/get_cheque_details.php',
     method: 'GET',
+    dataType: 'json',
     data: { ch_id },
     success: function(response) {
-      const data = JSON.parse(response);
+      const data = response;
 
       if (!data || !data.cheque) {
         notify('danger', 'Error', 'Cheque not found.');
@@ -361,6 +453,7 @@ $('#bank_account').on('change', function () {
       const cheque = data.cheque;
       const lines = data.details;
       const isCancelled = cheque.status == 0;
+      $('#chequeModalLabel').text(readOnly ? 'View Cheque' : 'Edit Cheque');
 
       // Fill form fields
       $('#cheque_number').val(cheque.cheque_number);
@@ -388,41 +481,24 @@ $('#bank_account').on('change', function () {
         });
       }, 150);
 
-      $('#chequeForm').append(`<input type='hidden' name='ch_id' value='${cheque.ch_id}'>`);
+      $('<input>', { type: 'hidden', name: 'ch_id', value: cheque.ch_id }).appendTo('#chequeForm');
 
-      if (isCancelled) {
+      if (isCancelled || readOnly) {
         $('#chequeForm input, #chequeForm select, #chequeForm textarea').prop('disabled', true);
-        $('#chequeForm .modal-footer').hide();
-        if (!$('#cancelledAlert').length) {
+        $('#chequeForm .processing_button').hide();
+        if (isCancelled && !readOnly && !$('#cancelledAlert').length) {
           $('.modal-body').prepend('<div id="cancelledAlert" class="alert alert-danger">This cheque is cancelled and cannot be edited.</div>');
         }
       } else {
         $('#chequeForm input, #chequeForm select, #chequeForm textarea').prop('disabled', false);
-        $('#chequeForm .modal-footer').show();
-        $('#cancelledAlert').remove();
-        if (!$('#deleteBtn').length) {
-          $('.modal-footer').prepend(`<button type="button" id="deleteBtn" class="btn btn-danger mr-auto">Delete</button>`);
-          $('#deleteBtn').on('click', function() {
-            Swal.fire({
-              title: 'Are you sure?',
-              text: "This will cancel the cheque.",
-              icon: 'warning',
-              showCancelButton: true,
-              confirmButtonColor: '#d33',
-              confirmButtonText: 'Yes, cancel it!'
-            }).then((result) => {
-              if (result.isConfirmed) {
-                $.post('ajax/delete_cheque.php', { ch_id }, function(resp) {
-                  notify('success', 'Cancelled', resp);
-                  setTimeout(() => location.reload(), 1200);
-                });
-              }
-            });
-          });
-        }
+        $('#chequeForm .processing_button').show();
       }
 
       $('#chequeModal').modal('show');
+    },
+    error: function(xhr) {
+      const response = xhr.responseJSON || {};
+      notify('danger', 'Error', response.error || 'Could not load cheque details.');
     }
   });
 }
