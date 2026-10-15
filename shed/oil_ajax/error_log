@@ -1,0 +1,12 @@
+[02-Aug-2025 16:37:47 Asia/Colombo] PHP Warning:  Undefined array key "grn_id" in /home/trincomp/bintennapattumpcs.com/shed/shed/oil_ajax/delete_grn.php on line 8
+[02-Aug-2025 16:37:47 Asia/Colombo] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '' at line 3 in /home/trincomp/bintennapattumpcs.com/shed/shed/oil_ajax/delete_grn.php:25
+Stack trace:
+#0 /home/trincomp/bintennapattumpcs.com/shed/shed/oil_ajax/delete_grn.php(25): mysqli_query()
+#1 {main}
+  thrown in /home/trincomp/bintennapattumpcs.com/shed/shed/oil_ajax/delete_grn.php on line 25
+[02-Aug-2025 16:38:22 Asia/Colombo] PHP Warning:  Undefined array key "grn_id" in /home/trincomp/bintennapattumpcs.com/shed/shed/oil_ajax/delete_grn.php on line 8
+[02-Aug-2025 16:38:22 Asia/Colombo] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '' at line 3 in /home/trincomp/bintennapattumpcs.com/shed/shed/oil_ajax/delete_grn.php:25
+Stack trace:
+#0 /home/trincomp/bintennapattumpcs.com/shed/shed/oil_ajax/delete_grn.php(25): mysqli_query()
+#1 {main}
+  thrown in /home/trincomp/bintennapattumpcs.com/shed/shed/oil_ajax/delete_grn.php on line 25

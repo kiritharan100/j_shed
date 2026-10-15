@@ -1,0 +1,120 @@
+[23-Dec-2025 09:47:28 Asia/Colombo] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '98', NOW(), '231', 'Fuel Sales', '283'
+    )' at line 8 in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php:186
+Stack trace:
+#0 /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php(186): mysqli_query()
+#1 {main}
+  thrown in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php on line 186
+[23-Dec-2025 09:47:33 Asia/Colombo] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '98', NOW(), '231', 'Fuel Sales', '283'
+    )' at line 8 in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php:186
+Stack trace:
+#0 /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php(186): mysqli_query()
+#1 {main}
+  thrown in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php on line 186
+[23-Dec-2025 09:48:00 Asia/Colombo] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '98', NOW(), '231', 'Fuel Sales', '283'
+    )' at line 8 in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php:186
+Stack trace:
+#0 /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php(186): mysqli_query()
+#1 {main}
+  thrown in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php on line 186
+[23-Dec-2025 09:48:27 Asia/Colombo] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '98', NOW(), '231', 'Fuel Sales', '283'
+    )' at line 8 in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php:186
+Stack trace:
+#0 /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php(186): mysqli_query()
+#1 {main}
+  thrown in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php on line 186
+[23-Dec-2025 09:48:47 Asia/Colombo] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '98', NOW(), '231', 'Fuel Sales', '283'
+    )' at line 8 in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php:186
+Stack trace:
+#0 /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php(186): mysqli_query()
+#1 {main}
+  thrown in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php on line 186
+[23-Dec-2025 09:49:02 Asia/Colombo] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '98', NOW(), '231', 'Fuel Sales', '283'
+    )' at line 8 in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php:186
+Stack trace:
+#0 /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php(186): mysqli_query()
+#1 {main}
+  thrown in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php on line 186
+[23-Dec-2025 09:49:39 Asia/Colombo] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '98', NOW(), '231', 'Fuel Sales', '283'
+    )' at line 8 in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php:186
+Stack trace:
+#0 /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php(186): mysqli_query()
+#1 {main}
+  thrown in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php on line 186
+[23-Dec-2025 09:51:42 Asia/Colombo] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '98', NOW(), '231', 'Fuel Sales', '283'
+    )' at line 8 in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php:186
+Stack trace:
+#0 /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php(186): mysqli_query()
+#1 {main}
+  thrown in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php on line 186
+[23-Dec-2025 09:52:55 Asia/Colombo] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '98', NOW(), '231', 'Fuel Sales', '283'
+    )' at line 8 in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php:186
+Stack trace:
+#0 /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php(186): mysqli_query()
+#1 {main}
+  thrown in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php on line 186
+[13-Jan-2026 11:41:12 Asia/Colombo] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '98', NOW(), '231', 'Fuel Sales', '283'
+    )' at line 8 in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php:186
+Stack trace:
+#0 /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php(186): mysqli_query()
+#1 {main}
+  thrown in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php on line 186
+[13-Jan-2026 11:42:11 Asia/Colombo] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '98', NOW(), '231', 'Fuel Sales', '283'
+    )' at line 8 in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php:186
+Stack trace:
+#0 /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php(186): mysqli_query()
+#1 {main}
+  thrown in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php on line 186
+[13-Jan-2026 11:43:22 Asia/Colombo] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '98', NOW(), '231', 'Fuel Sales', '283'
+    )' at line 8 in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php:186
+Stack trace:
+#0 /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php(186): mysqli_query()
+#1 {main}
+  thrown in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php on line 186
+[13-Jan-2026 15:05:51 Asia/Colombo] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '98', NOW(), '231', 'Fuel Sales', '283'
+    )' at line 8 in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php:186
+Stack trace:
+#0 /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php(186): mysqli_query()
+#1 {main}
+  thrown in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php on line 186
+[13-Jan-2026 15:06:54 Asia/Colombo] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '98', NOW(), '231', 'Fuel Sales', '283'
+    )' at line 8 in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php:186
+Stack trace:
+#0 /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php(186): mysqli_query()
+#1 {main}
+  thrown in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php on line 186
+[13-Jan-2026 15:07:56 Asia/Colombo] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '98', NOW(), '231', 'Fuel Sales', '283'
+    )' at line 8 in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php:186
+Stack trace:
+#0 /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php(186): mysqli_query()
+#1 {main}
+  thrown in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php on line 186
+[13-Jan-2026 16:07:48 Asia/Colombo] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '1', NOW(), '231', 'Fuel Sales', '283'
+    )' at line 8 in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php:186
+Stack trace:
+#0 /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php(186): mysqli_query()
+#1 {main}
+  thrown in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php on line 186
+[13-Jan-2026 16:07:56 Asia/Colombo] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '1', NOW(), '231', 'Fuel Sales', '283'
+    )' at line 8 in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php:186
+Stack trace:
+#0 /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php(186): mysqli_query()
+#1 {main}
+  thrown in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php on line 186
+[13-Jan-2026 16:08:13 Asia/Colombo] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '1', NOW(), '231', 'Fuel Sales', '283'
+    )' at line 8 in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php:186
+Stack trace:
+#0 /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php(186): mysqli_query()
+#1 {main}
+  thrown in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php on line 186
+[13-Jan-2026 16:08:19 Asia/Colombo] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '1', NOW(), '231', 'Fuel Sales', '283'
+    )' at line 8 in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php:186
+Stack trace:
+#0 /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php(186): mysqli_query()
+#1 {main}
+  thrown in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php on line 186
+[13-Jan-2026 16:08:28 Asia/Colombo] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '1', NOW(), '231', 'Fuel Sales', '283'
+    )' at line 8 in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php:186
+Stack trace:
+#0 /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php(186): mysqli_query()
+#1 {main}
+  thrown in /home/trincomp/samanthuraipattumpcs.com/shed/accounts/ajax_day_end/ajax_post_day_end.php on line 186

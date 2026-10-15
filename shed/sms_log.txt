@@ -1,0 +1,2 @@
+[2025-06-18 21:58:30] SMS sent to +94770888501: {"message":"An error occurred","error":"Attempt to read property \"sms_type\" on null"}
+[2025-06-18 21:59:20] SMS sent to +94770888501: {"message":"SMS sent successfully","data":{"status":"success","campaign_id":4231,"message":"Test report","sender_id":"DtecStudio","pages":1,"recipient_number":"94770888501","sms_credit_balance":1007.6399999999999863575794734060764312744140625}}
