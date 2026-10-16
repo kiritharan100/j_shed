@@ -32,7 +32,7 @@ if ($re_id > 0) {
 
     // Clear old lines and transactions
     mysqli_query($con, "DELETE FROM acc_receipt_detail WHERE re_id = '$re_id'");
-    mysqli_query($con, "DELETE FROM acc_transaction WHERE ref_no = '$re_id' AND tra_type = 'CHEQUE'");
+    mysqli_query($con, "DELETE FROM acc_transaction WHERE ref_no = '$re_id' AND tra_type = 'Other Rec'");
 
     $updateCheque = "UPDATE acc_receipt SET 
         dr_acc_id = '$bank_account',

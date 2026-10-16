@@ -8,39 +8,64 @@ $payees = mysqli_query($con, "SELECT DISTINCT customer_name as ca_name,c_id FROM
 
 
 $banks = mysqli_query($con, "SELECT ca_id, ca_name FROM acc_chart_of_accounts WHERE ca_group='Cash in Hand' AND ca_id <> '44' ORDER BY ca_name ASC");
-// $start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-1');
-$start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-d', strtotime('-31 days')); // 29 days ago (so total 30 days including today)
-$end_date   = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-t');
-
-$start_datetime = $start_date . ' 00:00:00';
-$end_datetime = $end_date . ' 23:59:59';
+$period_query = mysqli_query($con, "SELECT id, perid_from, period_to FROM accounts_accounting_period WHERE location_id = " . (int)$location_id . " AND status = 1 ORDER BY perid_from DESC");
+$periods = [];
+if ($period_query) while ($period_row = mysqli_fetch_assoc($period_query)) $periods[] = $period_row;
+$latest_period = $periods[0] ?? null;
+$period_cookie_key = 'acc_period_' . (int)$location_id;
+$period_cookie = null;
+if (!empty($_COOKIE[$period_cookie_key])) {
+  $parts = explode('|', (string)$_COOKIE[$period_cookie_key]);
+  if (count($parts) >= 3) $period_cookie = ['selection' => urldecode($parts[0]), 'start' => urldecode($parts[1]), 'end' => urldecode($parts[2])];
+}
+$start_date = $_GET['start_date'] ?? ($period_cookie['start'] ?? ($latest_period['perid_from'] ?? date('Y-m-d', strtotime('-30 days'))));
+$end_date = $_GET['end_date'] ?? ($period_cookie['end'] ?? ($latest_period['period_to'] ?? date('Y-m-d')));
+$start_date = date('Y-m-d', strtotime($start_date));
+$end_date = date('Y-m-d', strtotime($end_date));
+$period_selection = $period_cookie['selection'] ?? ($latest_period ? 'current' : 'custom');
+if (!in_array($period_selection, ['custom', 'current'], true) && !preg_match('/^period_\d+$/', $period_selection)) $period_selection = 'custom';
+$is_customer_advance = isset($_REQUEST['customer_advance']);
 
 ?>
+
+<style>
+  #receiptFilterForm label { font-size: 13px; font-weight: 600; white-space: nowrap; }
+  #receiptFilterForm .form-control { height: 32px; padding: 4px 8px; font-size: 13px; }
+  #receiptFilterForm #receiptPeriod { width: 205px !important; }
+  #receiptFilterForm #receiptStartDate, #receiptFilterForm #receiptEndDate { width: 145px; }
+  #receiptFilterForm .btn { height: 32px; padding: 4px 11px; font-size: 13px; line-height: 22px; }
+  #example tbody tr { height: 25px !important; }
+  #example tbody td { padding: 1px 5px !important; height: 25px !important; font-size: 13px; line-height: 1 !important; vertical-align: middle; }
+  #example select.receipt-action.form-control.form-control-sm { min-width: 100px; width: 100px; height: 21px !important; min-height: 21px !important; padding: 0 4px !important; color: #333; background: #fff !important; border: 1px solid #ced4da; border-radius: 3px; font-size: 11px; line-height: 1 !important; }
+</style>
 
 <div class="content-wrapper">
   <div class="container-fluid">
     <div class="main-header">
-      <h5>ACCOUNTS | <?php echo $client_name; ?> | RECEIPT</h5>
+      <h5>ACCOUNTS | <?php echo $client_name; ?> | <?= $is_customer_advance ? 'CUSTOMER ADVANCES' : 'RECEIPTS' ?></h5>
     </div>
 
     <div class="row">
       <div class="col-md-12">
         <div class="card">
           <div class="card-block">
-            <div align='right'>
-
-             <form method="get" class="form-inline mb-3">
-      <label for="start_date">Start Date:&nbsp;</label>
-    <input type="date" name="start_date" class="form-control mr-3" value="<?= htmlspecialchars($start_date) ?>" required>
-      <label for="end_date">End Date:&nbsp;</label>
-      <input type="date" name="end_date" class="form-control mr-3" value="<?=htmlspecialchars($end_date)?>" required>
-      <button type="submit" class="btn btn-primary mr-3">Filter</button>
-
-
-                <button type="button" class="btn btn-success" onclick="openChequeModal()">+ Record <?php if(isset($_REQUEST['customer_advance'])){ echo "Customer Advance";} else { echo "REceipt";} ?> </button>
-                  <button type='button' id="exportButton" filename='<?php echo "Cheque_Payment_".$start_date."_".$end_date; ?>.xlsx' class="btn btn-primary"><i class="ti-cloud-down"></i> Export</button>
-    </form>  
-              <!-- <button class="btn btn-success" data-toggle="modal" data-target="#chequeModal" onclick="openChequeModal()">+ Write Cheque</button> -->
+            <div id="receiptFilterForm" class="d-flex flex-wrap align-items-center mb-3" style="gap:7px;padding:9px 10px;background:#f7f8fa;border:1px solid #dee2e6;border-radius:4px;">
+              <button type="button" class="btn btn-success btn-sm" onclick="openChequeModal()">+ Record <?= $is_customer_advance ? 'Customer Advance' : 'Receipt' ?></button>
+              <label for="receiptPeriod" class="mb-0">Period</label>
+              <select id="receiptPeriod" class="form-control form-control-sm">
+                <option value="custom" <?= $period_selection === 'custom' ? 'selected' : '' ?>>Custom</option>
+                <?php if ($latest_period): ?><option value="current" data-start="<?= htmlspecialchars($latest_period['perid_from']) ?>" data-end="<?= htmlspecialchars($latest_period['period_to']) ?>" <?= $period_selection === 'current' ? 'selected' : '' ?>>Current <?= date('d/m/Y', strtotime($latest_period['perid_from'])) ?> - <?= date('d/m/Y', strtotime($latest_period['period_to'])) ?></option><?php endif; ?>
+                <?php foreach ($periods as $period): if ($latest_period && (int)$period['id'] === (int)$latest_period['id']) continue; $period_value = 'period_' . (int)$period['id']; ?>
+                <option value="<?= $period_value ?>" data-start="<?= htmlspecialchars($period['perid_from']) ?>" data-end="<?= htmlspecialchars($period['period_to']) ?>" <?= $period_selection === $period_value ? 'selected' : '' ?>><?= date('d/m/Y', strtotime($period['perid_from'])) ?> - <?= date('d/m/Y', strtotime($period['period_to'])) ?></option>
+                <?php endforeach; ?>
+              </select>
+              <label for="receiptStartDate" class="mb-0">From</label>
+              <input type="date" id="receiptStartDate" class="form-control form-control-sm" value="<?= htmlspecialchars($start_date) ?>">
+              <label for="receiptEndDate" class="mb-0">To</label>
+              <input type="date" id="receiptEndDate" class="form-control form-control-sm" value="<?= htmlspecialchars($end_date) ?>">
+              <button type="button" id="receiptFilterButton" class="btn btn-primary btn-sm">Filter</button>
+              <label class="mb-0 ml-2"><input type="checkbox" id="showCancelledReceipts"> Show Cancelled</label>
+              <button type="button" id="exportButton" filename="Receipts.xlsx" class="btn btn-primary btn-sm"><i class="ti-cloud-down"></i> Export</button>
             </div>
             <hr>
                 <table id="example" class="table table-bordered table-striped table-sm">
@@ -58,63 +83,11 @@ $end_datetime = $end_date . ' 23:59:59';
                   <th>Action</th>
                 </tr>
               </thead>
-              <tbody>
-                <?php
-                $count = 1;
-                $total_active = 0;
-                $Receipt = mysqli_query($con, "SELECT c.*, coa.ca_name AS from_account ,customer_name
-                  FROM acc_receipt c
-                  LEFT JOIN acc_chart_of_accounts coa ON c.dr_acc_id = coa.ca_id
-                  LEFT JOIN mange_customer s ON c.supplier_id = s.c_id
-                  WHERE c.ch_date BETWEEN '$start_datetime' AND '$end_datetime'   AND c.location_id = '$location_id'
-                  ORDER BY c.re_id DESC LIMIT 100");
-
-                while ($row = mysqli_fetch_assoc($Receipt)) {
-                    $is_cancelled = $row['status'] == 0;
-                    $row_style = $is_cancelled ? 'class="table-danger cancelled-row"' : '';
-
-                    $re_id = $row['re_id'];
-                    $posted_accounts = mysqli_query($con, "SELECT d.dr_acc_id, a.ca_name 
-                      FROM acc_receipt_detail d 
-                      LEFT JOIN acc_chart_of_accounts a ON d.dr_acc_id = a.ca_id
-                      WHERE d.re_id = '$re_id'");
-
-                    $names = [];
-                    while ($pa = mysqli_fetch_assoc($posted_accounts)) {
-                        $names[] = $pa['ca_name'];
-                    }
-
-$supplier_note = ($row['supplier_id'] > 0 && isset($row['supplier_name']) && $row['supplier_name']) 
-    ? " : " . $row['supplier_name'] 
-    : "";
-                    $posted_to = count($names) == 1 ? $names[0] . $supplier_note : "- Split -$supplier_note";
-
-                    $total = number_format($row['sub_total'], 2);
-                    if (!$is_cancelled) {
-                        $total_active += $row['sub_total'];
-                    }
-
-                    echo "<tr $row_style>
-                          <td align='center'>{$count}</td>
-                             <td align='center'>REC-{$row['loc_no']}</td>
-                          <td>{$row['ch_date']}</td>
-                             <td>{$row['cheque_number']}</td>
-                          <td>{$row['from_account']}</td>
-                       
-                          <td>{$posted_to}</td>
-                          <td>{$row['customer_name']}</td>
-                          <td align='right'>{$total}</td>
-                          <td align='center'>" . ($row['status'] == 1 ? 'Posted' : 'Cancelled') . "</td>
-                          <td align='center'><button class='btn btn-primary btn-sm' style='padding: 2px 8px; font-size: 12px;' onclick='editCheque({$row['re_id']})'>Edit</button></td>
-                        </tr>";
-                    $count++;
-                }
-                ?>
-              </tbody>
+              <tbody></tbody>
             </table>
 
-            <div class="text-right font-weight-bold mt-2">
-              Total   Payments: <?= number_format($total_active, 2) ?>
+            <div class="text-right font-weight-bold mt-2" id="receiptTotal">
+              Total <?= $is_customer_advance ? 'Customer Advances' : 'Receipts' ?>: 0.00
             </div>
 
           </div>
@@ -139,10 +112,10 @@ $supplier_note = ($row['supplier_id'] > 0 && isset($row['supplier_name']) && $ro
 
         <div class="modal-body">
           <div class="row">
-            <div class="col-md-4">
+            <div class="col-md-4" id="payeeGroup" <?= isset($_REQUEST['customer_advance']) ? '' : 'style="display:none"' ?>>
               <div class="form-group">
                 <label>Payee</label>
-                <select name="payee" id="payee" class="form-control select2_single">
+                <select name="payee" id="payee" class="form-control select2_single" <?= isset($_REQUEST['customer_advance']) ? 'required' : '' ?>>
                   <option value="">-- Select Payee --</option>
                   <?php while ($p = mysqli_fetch_assoc($payees)) echo "<option value=\"{$p['c_id']}\">{$p['ca_name']}</option>"; ?>
                 </select>
@@ -167,7 +140,7 @@ $supplier_note = ($row['supplier_id'] > 0 && isset($row['supplier_name']) && $ro
             <div class="col-md-3">
               <div class="form-group">
                 <label>Date</label>
-                <input type="date" name="payment_date" class="form-control" value="<?= htmlspecialchars($transaction_date) ?>" required>
+                <input type="date" id="payment_date" name="payment_date" class="form-control" value="<?= htmlspecialchars($transaction_date) ?>" required>
               </div>
             </div>
           </div>
@@ -326,20 +299,20 @@ function loadAccounts() {
 //   });
 // }
 
-<?php if(!isset($_REQUEST['customer_advance'])){  ?>
 function bindAccountChangeListener() {
+  if (isCustomerAdvance) {
+    $('#payeeGroup').show();
+    $('#payee').prop('disabled', false).attr('required', true);
+    return;
+  }
   $(document).off('change', '.select2_account').on('change', '.select2_account', function () {
-    const selectedVal = $(this).val();
-
-    if (selectedVal == '44') {
-      $('#payee').prop('disabled', false).attr('required', true);
-    } else {
-      $('#payee').val('').trigger('change').prop('disabled', true).removeAttr('required');
-    }
+    const customerRequired = $('.select2_account').toArray().some(el => $(el).val() == '44');
+    $('#payeeGroup').toggle(customerRequired);
+    $('#payee').prop('disabled', !customerRequired);
+    if (customerRequired) $('#payee').attr('required', true);
+    else $('#payee').val('').trigger('change').removeAttr('required');
   });
 }
-
-<?php } ?>
 
 
  function openChequeModal() {
@@ -348,6 +321,14 @@ function bindAccountChangeListener() {
 $('#chequeForm').find("input[type=text], input[type=number], textarea").val('');
   $('#chequeForm input[name="payment_date"]').val(<?= json_encode($transaction_date) ?>);
   $('#chequeForm').find("select").val('').trigger('change');
+  $('#chequeForm input[name="re_id"]').remove();
+  $('#chequeForm input, #chequeForm select, #chequeForm textarea').prop('disabled', false);
+  $('#chequeForm .modal-footer').show();
+  $('#cancelledAlert').remove();
+  $('#deleteBtn').remove();
+  $('#chequeModalLabel').text('Record ' + (isCustomerAdvance ? 'Customer Advance' : 'Receipt'));
+  if (isCustomerAdvance) $('#payee').prop('disabled', false).attr('required', true);
+  else $('#payee').prop('disabled', true).removeAttr('required');
 
   // Reset lines
   $('#cheque_lines tbody').html(`<tr>
@@ -461,10 +442,79 @@ $('#chequeModal').on('shown.bs.modal', function () {
   });
 });
 
+let receiptTable;
+function saveReceiptPeriodCookie() {
+  const values = [$('#receiptPeriod').val() || 'custom', $('#receiptStartDate').val(), $('#receiptEndDate').val()]
+    .map(value => encodeURIComponent(value || '')).join('|');
+  document.cookie = <?= json_encode($period_cookie_key) ?> + '=' + values + '; path=/; max-age=' + (180 * 86400) + '; SameSite=Lax';
+}
+function reloadReceiptTable(resetPaging = true) {
+  saveReceiptPeriodCookie();
+  if (receiptTable) receiptTable.ajax.reload(null, resetPaging);
+}
+
 $(document).ready(function() {
-   $('#example').DataTable({
-        "pageLength": 50
-    });
+  receiptTable = $('#example').DataTable({
+    processing: true,
+    serverSide: true,
+    pageLength: 50,
+    order: [[2, 'desc']],
+    ajax: {
+      url: 'ajax/list_receipts.php',
+      type: 'POST',
+      data: function(request) {
+        request.start_date = $('#receiptStartDate').val();
+        request.end_date = $('#receiptEndDate').val();
+        request.show_cancelled = $('#showCancelledReceipts').is(':checked') ? 1 : 0;
+        request.customer_advance = <?= $is_customer_advance ? '1' : '0' ?>;
+      },
+      dataSrc: function(response) {
+        $('#receiptTotal').text('Total <?= $is_customer_advance ? 'Customer Advances' : 'Receipts' ?>: ' + (response.totalReceipts || '0.00'));
+        return response.data || [];
+      },
+      error: function(xhr) {
+        const response = xhr.responseJSON || {};
+        notify('danger', 'Receipt list error', response.error || 'Could not load receipts.');
+      }
+    },
+    columns: [
+      { data: 'index', orderable: false, searchable: false },
+      { data: 'ref_no' },
+      { data: 'date' },
+      { data: 'cheque_no' },
+      { data: 'from_account' },
+      { data: 'credit_account' },
+      { data: 'customer' },
+      { data: 'amount', className: 'text-right' },
+      { data: 'status', orderable: false },
+      { data: 'action', orderable: false, searchable: false }
+    ],
+    createdRow: function(row, data) {
+      if (Number(data.status_value) === 0) $(row).addClass('table-danger');
+    }
+  });
+  saveReceiptPeriodCookie();
+  $('#receiptPeriod').on('change', function() {
+    const option = $(this).find(':selected');
+    if (this.value !== 'custom') {
+      $('#receiptStartDate').val(option.data('start'));
+      $('#receiptEndDate').val(option.data('end'));
+    }
+    reloadReceiptTable();
+  });
+  $('#receiptFilterButton').on('click', function() {
+    $('#receiptPeriod').val('custom');
+    reloadReceiptTable();
+  });
+  $('#receiptStartDate, #receiptEndDate').on('change', function() {
+    $('#receiptPeriod').val('custom');
+    reloadReceiptTable();
+  });
+  $('#showCancelledReceipts').on('change', function() { reloadReceiptTable(false); });
+  $('#exportButton').on('click', function() {
+    $(this).attr('filename', '<?= $is_customer_advance ? 'Customer_Advances' : 'Receipts' ?>_' + $('#receiptStartDate').val() + '_' + $('#receiptEndDate').val() + '.xlsx');
+  });
+  $('.select2_single').select2({ width: '100%' });
 });
 
 
@@ -483,7 +533,7 @@ $(document).ready(function() {
 <script>
   //edit cheque 
 
-  function editCheque(re_id) {
+  function editCheque(re_id, readOnly = false) {
   $.ajax({
     url: 'ajax/get_receipt_details.php',
     method: 'GET',
@@ -499,6 +549,7 @@ $(document).ready(function() {
       const cheque = data.cheque;
       const lines = data.details;
       const isCancelled = cheque.status == 0;
+      const readOnlyMode = readOnly || isCancelled;
 
       // Fill form fields
       $('#cheque_number').val(cheque.cheque_number);
@@ -526,33 +577,34 @@ $(document).ready(function() {
         });
       }, 150);
 
+      $('#chequeForm input[name="re_id"]').remove();
       $('#chequeForm').append(`<input type='hidden' name='re_id' value='${cheque.re_id}'>`);
 
-      if (isCancelled) {
+      if (readOnlyMode) {
         $('#chequeForm input, #chequeForm select, #chequeForm textarea').prop('disabled', true);
         $('#chequeForm .modal-footer').hide();
-        if (!$('#cancelledAlert').length) {
-          $('.modal-body').prepend('<div id="cancelledAlert" class="alert alert-danger">This cheque is cancelled and cannot be edited.</div>');
-        }
+        $('#cancelledAlert').remove();
+        $('.modal-body').prepend('<div id="cancelledAlert" class="alert alert-info">' + (isCancelled ? 'This receipt is cancelled and is read-only.' : 'Receipt details (view only).') + '</div>');
       } else {
         $('#chequeForm input, #chequeForm select, #chequeForm textarea').prop('disabled', false);
         $('#chequeForm .modal-footer').show();
         $('#cancelledAlert').remove();
+        $('#chequeModalLabel').text('Edit Receipt');
         if (!$('#deleteBtn').length) {
           $('.modal-footer').prepend(`<button type="button" id="deleteBtn" class="btn btn-danger mr-auto">Delete</button>`);
           $('#deleteBtn').on('click', function() {
             Swal.fire({
               title: 'Are you sure?',
-              text: "This will cancel the cheque.",
+              text: "This will delete the receipt.",
               icon: 'warning',
               showCancelButton: true,
               confirmButtonColor: '#d33',
-              confirmButtonText: 'Yes, cancel it!'
+              confirmButtonText: 'Yes, delete it'
             }).then((result) => {
               if (result.isConfirmed) {
                 $.post('ajax/delete_receipt.php', { re_id }, function(resp) {
-                  notify('success', 'Cancelled', resp);
-                  setTimeout(() => location.reload(), 1200);
+                  notify('success', 'Deleted', resp);
+                  if (receiptTable) receiptTable.ajax.reload(null, false);
                 });
               }
             });
@@ -560,10 +612,35 @@ $(document).ready(function() {
         }
       }
 
+      if (isCustomerAdvance) $('#payeeGroup').show();
+      else $('#payeeGroup').toggle($('.select2_account').toArray().some(el => $(el).val() == '44'));
+      $('#chequeModalLabel').text(readOnlyMode ? (isCancelled ? 'View Cancelled Receipt' : 'View Receipt') : 'Edit Receipt');
+
       $('#chequeModal').modal('show');
     }
   });
 }
+
+$(document).on('change', '.receipt-action', function() {
+  const action = this.value;
+  const id = Number(this.dataset.id || 0);
+  this.value = '';
+  if (!id) return;
+  if (action === 'view') editCheque(id, true);
+  if (action === 'edit' && Number(this.dataset.status) === 1) editCheque(id, false);
+  if (action === 'delete' && Number(this.dataset.status) === 1) {
+    const confirmDelete = window.Swal
+      ? window.Swal.fire({ title: 'Delete receipt?', text: 'This will mark the receipt as deleted.', icon: 'warning', showCancelButton: true, confirmButtonText: 'Yes, delete it' }).then(result => result.isConfirmed)
+      : Promise.resolve(window.confirm('Delete this receipt?'));
+    confirmDelete.then(confirmed => {
+      if (!confirmed) return;
+      $.post('ajax/delete_receipt.php', { re_id: id }, function(resp) {
+        notify('success', 'Deleted', resp);
+        if (receiptTable) receiptTable.ajax.reload(null, false);
+      }).fail(() => notify('danger', 'Error', 'Could not delete the receipt.'));
+    });
+  }
+});
 
 
   </script>

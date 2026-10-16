@@ -1,5 +1,6 @@
 <?php
 include("../../db.php");
+include("../../auth.php");
 
 $re_id = isset($_GET['re_id']) ? intval($_GET['re_id']) : 0;
 
@@ -9,10 +10,10 @@ if (!$re_id) {
 }
 
 // Fetch cheque header
-$query = "SELECT c.*, s.supplier_name 
+$query = "SELECT c.*, s.customer_name AS supplier_name 
           FROM acc_receipt c 
-          LEFT JOIN manage_supplier s ON c.supplier_id = s.sup_id 
-          WHERE c.re_id = '$re_id' 
+          LEFT JOIN mange_customer s ON c.supplier_id = s.c_id 
+          WHERE c.re_id = '$re_id' AND c.location_id = '$location_id'
           LIMIT 1";
 $result = mysqli_query($con, $query);
 

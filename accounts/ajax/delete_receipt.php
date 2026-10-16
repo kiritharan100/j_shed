@@ -18,7 +18,7 @@ $update_details = "UPDATE acc_receipt_detail SET status = 0 WHERE re_id = '$re_i
 mysqli_query($con, $update_details);
 
 // Soft delete from acc_transaction
-$update_transaction = "UPDATE acc_transaction SET status = 0 WHERE ref_no = '$re_id' AND tra_type = 'CHEQUE'";
+$update_transaction = "UPDATE acc_transaction SET status = 0 WHERE ref_no = '$re_id' AND tra_type = 'Other Rec'";
 mysqli_query($con, $update_transaction);
 
 // Log the action
