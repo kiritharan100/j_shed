@@ -2,7 +2,8 @@
 include("../../db.php");
 include("../../auth.php");
 require_once __DIR__ . '/../transaction_date_cookie.php';
-$location_id = $_POST['location_id'];
+require_once __DIR__ . '/../accounting_period_guard.php';
+$location_id = accounting_period_location_id($con);
 $journal_id = $_POST['id'] ?? 0;
 $date = $_POST['journal_date'];
 $memo = mysqli_real_escape_string($con, $_POST['memo']);
@@ -10,6 +11,18 @@ $category = $_POST['category'];
 $desc = $_POST['description'];
 $debit = $_POST['debit'];
 $credit = $_POST['credit'];
+$is_edit = (int)$journal_id > 0;
+
+if ($location_id < 1) {
+  echo 'ERROR: Select a client before saving the journal entry.';
+  exit;
+}
+
+$period_error = accounting_period_date_error($con, (int)$location_id, (string)$date);
+if ($period_error !== null) {
+  echo 'ERROR: ' . $period_error;
+  exit;
+}
 
 $totalDr = $totalCr = 0;
 
@@ -38,6 +51,7 @@ if ($journal_id > 0) {
   $journal_id = mysqli_insert_id($con);
 }
 
+$log_lines = [];
 foreach ($category as $i => $acc_id) {
   $d = floatval($debit[$i]);
   $c = floatval($credit[$i]);
@@ -47,9 +61,19 @@ foreach ($category as $i => $acc_id) {
       VALUES ($journal_id, $acc_id, '$desc_text', $d, $c, 1)");
     mysqli_query($con, "INSERT INTO acc_transaction (ca_id, t_date, tra_type, ref_no, debit, credit, t_memo, credted_by, created_on,location_id)
       VALUES ($acc_id, '$date', 'JOURNAL', $journal_id, $d, $c, '$desc_text', $user_id, NOW(),'$location_id')");
+    $account_name = '';
+    $account_name_stmt = $con->prepare('SELECT ca_name FROM acc_chart_of_accounts WHERE ca_id = ? LIMIT 1');
+    $acc_id_int = (int)$acc_id;
+    $account_name_stmt->bind_param('i', $acc_id_int);
+    $account_name_stmt->execute();
+    $account_name_stmt->bind_result($account_name);
+    $account_name_stmt->fetch();
+    $account_name_stmt->close();
+    $log_lines[] = trim($account_name . ' ' . $desc_text . ' Dr ' . number_format($d, 2) . ' Cr ' . number_format($c, 2));
   }
 }
 
-UserLog("3", "Journal Entry", "Memo: $memo");
+$action = $is_edit ? 'Journal Entry Edited' : 'Journal Entry Recorded';
+UserLog("3", $action, 'Journal ID ' . $journal_id . '; date ' . $date . '; debit ' . number_format($totalDr, 2) . '; credit ' . number_format($totalCr, 2) . '; memo ' . trim((string)($_POST['memo'] ?? '')) . '; lines: ' . implode('; ', $log_lines));
 remember_shared_transaction_date($date);
 echo "Journal saved.";

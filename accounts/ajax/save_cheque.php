@@ -4,6 +4,7 @@
 include("../../db.php");
 include("../../auth.php");
 require_once __DIR__ . '/../transaction_date_cookie.php';
+require_once __DIR__ . '/../accounting_period_guard.php';
 
 $ch_id         = isset($_POST['ch_id']) ? intval($_POST['ch_id']) : 0;
 $payee         = isset($_POST['payee']) && !empty($_POST['payee']) ? mysqli_real_escape_string($con, $_POST['payee']) : '';
@@ -12,10 +13,23 @@ $cheque_number = mysqli_real_escape_string($con, $_POST['cheque_number']);
 $payment_date  = mysqli_real_escape_string($con, $_POST['payment_date']);
 $memo          = mysqli_real_escape_string($con, $_POST['memo']);
 $current_date_time = date('Y-m-d H:i:s');
-$location_id = $_POST['location_id'];
+$location_id = accounting_period_location_id($con);
+$location_id = $location_id > 0 ? $location_id : 0;
 $category    = $_POST['category'];
 $description = $_POST['description'];
 $amount      = $_POST['amount'];
+$is_edit = $ch_id > 0;
+
+if ($location_id < 1) {
+    echo 'ERROR: Select a client before saving the cheque.';
+    exit;
+}
+
+$period_error = accounting_period_date_error($con, (int)$location_id, (string)$payment_date);
+if ($period_error !== null) {
+    echo 'ERROR: ' . $period_error;
+    exit;
+}
 
 $get_max = mysqli_query($con, "SELECT MAX(loc_no) as max_no FROM acc_cheque WHERE location_id = '$location_id'");
 $row = mysqli_fetch_assoc($get_max);
@@ -23,6 +37,7 @@ $next_loc_no = ($row['max_no'] ?? 0) + 1;
 
 
 $sub_total = 0;
+$log_lines = [];
 foreach ($amount as $val) {
     $sub_total += floatval($val);
 }
@@ -72,6 +87,14 @@ foreach ($category as $i => $cat_id) {
     $insertLine = "INSERT INTO acc_cheque_detail (ch_id, dr_acc_id, description, amount, status)
                    VALUES ('$ch_id', '$acc_id', '$desc', '$amt', 1)";
     mysqli_query($con, $insertLine);
+    $account_name = '';
+    $account_name_stmt = $con->prepare('SELECT ca_name FROM acc_chart_of_accounts WHERE ca_id = ? LIMIT 1');
+    $account_name_stmt->bind_param('i', $acc_id);
+    $account_name_stmt->execute();
+    $account_name_stmt->bind_result($account_name);
+    $account_name_stmt->fetch();
+    $account_name_stmt->close();
+    $log_lines[] = trim($account_name . ' ' . $desc . ' ' . number_format($amt, 2));
 
     // Debit entry
 $insertDr = "INSERT INTO acc_transaction 
@@ -91,8 +114,25 @@ $insertCr = "INSERT INTO acc_transaction
 mysqli_query($con, $insertCr);
 
 // Log
-$action = $ch_id > 0 && isset($_POST['ch_id']) ? "Cheque updated" : "New cheque written";
-$detail = "$payee - Cheque #$cheque_number";
+$supplier_name = '';
+if ($payee !== '') {
+    $supplier_stmt = $con->prepare('SELECT supplier_name FROM manage_supplier WHERE sup_id = ? LIMIT 1');
+    $payee_id = (int)$payee;
+    $supplier_stmt->bind_param('i', $payee_id);
+    $supplier_stmt->execute();
+    $supplier_stmt->bind_result($supplier_name);
+    $supplier_stmt->fetch();
+    $supplier_stmt->close();
+}
+$bank_name = '';
+$bank_stmt = $con->prepare('SELECT ca_name FROM acc_chart_of_accounts WHERE ca_id = ? LIMIT 1');
+$bank_stmt->bind_param('i', $bank_account);
+$bank_stmt->execute();
+$bank_stmt->bind_result($bank_name);
+$bank_stmt->fetch();
+$bank_stmt->close();
+$action = $is_edit ? 'Cheque updated' : 'New cheque written';
+$detail = 'Cheque ID ' . $ch_id . '; date ' . $payment_date . '; cheque #' . $cheque_number . '; payee ' . ($supplier_name ?: $payee) . '; bank ' . $bank_name . '; total ' . number_format($sub_total, 2) . '; lines: ' . implode('; ', $log_lines) . '; memo ' . trim((string)($_POST['memo'] ?? ''));
 UserLog("3", $action, $detail);
 
 remember_shared_transaction_date($payment_date);

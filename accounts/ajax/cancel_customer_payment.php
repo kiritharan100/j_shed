@@ -24,7 +24,7 @@ $locationId = (int)$locationId;
 
 try {
     $con->begin_transaction();
-    $paymentStmt = $con->prepare('SELECT receipt_no, c_id, rec_amount, rec_status FROM acc_customer_payment WHERE cp_id = ? AND location_id = ? FOR UPDATE');
+    $paymentStmt = $con->prepare('SELECT receipt_no, c_id, ca_id, rec_date, cheque_no, Memo, rec_amount, rec_status FROM acc_customer_payment WHERE cp_id = ? AND location_id = ? FOR UPDATE');
     $paymentStmt->bind_param('ii', $paymentId, $locationId);
     $paymentStmt->execute();
     $payment = $paymentStmt->get_result()->fetch_assoc();
@@ -37,6 +37,9 @@ try {
     $detailsStmt->execute();
     $details = $detailsStmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $detailsStmt->close();
+    $allocationLog = array_map(static function (array $detail): string {
+        return $detail['inv_type'] . ' invoice #' . (int)$detail['inv_id'] . ' ' . number_format((float)$detail['amount'], 2);
+    }, $details);
 
     foreach ($details as $detail) {
         $invoiceId = (int)$detail['inv_id'];
@@ -72,5 +75,19 @@ try {
     payment_json_error($error->getMessage(), 500);
 }
 
-UserLog('3', 'Customer Payment Cancelled', 'Receipt ' . $payment['receipt_no'] . ' (Payment ID ' . $paymentId . ') cancelled; amount ' . number_format((float)$payment['rec_amount'], 2));
+$customerName = '';
+$customerStmt = $con->prepare('SELECT customer_name FROM mange_customer WHERE c_id = ? LIMIT 1');
+$customerStmt->bind_param('i', $payment['c_id']);
+$customerStmt->execute();
+$customerStmt->bind_result($customerName);
+$customerStmt->fetch();
+$customerStmt->close();
+$accountName = '';
+$accountStmt = $con->prepare('SELECT ca_name FROM acc_chart_of_accounts WHERE ca_id = ? LIMIT 1');
+$accountStmt->bind_param('i', $payment['ca_id']);
+$accountStmt->execute();
+$accountStmt->bind_result($accountName);
+$accountStmt->fetch();
+$accountStmt->close();
+UserLog('3', 'Customer Payment Cancelled', 'Receipt ' . $payment['receipt_no'] . ' (Payment ID ' . $paymentId . '); date ' . $payment['rec_date'] . '; customer ' . ($customerName ?: $payment['c_id']) . '; account ' . $accountName . '; amount ' . number_format((float)$payment['rec_amount'], 2) . '; cheque ' . $payment['cheque_no'] . '; memo ' . $payment['Memo'] . '; allocations: ' . implode('; ', $allocationLog));
 echo json_encode(['status' => 'success', 'message' => 'Customer payment cancelled successfully.']);

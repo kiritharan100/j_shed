@@ -462,7 +462,8 @@ if (total_value === '' || parseFloat(total_value) === 0) {
       }
     },
     error: function(xhr) {
-      notify('danger', 'Server Error', 'Could not process the request.');
+      const response = xhr.responseJSON || {};
+      notify('danger', 'Could not save customer payment', response.message || 'Could not process the request.');
     },
     complete: function() {
       button.prop('disabled', false).html($('#payment_id').val() ? 'Update' : 'Save');

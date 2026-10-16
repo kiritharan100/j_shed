@@ -2,6 +2,7 @@
 require_once '../../db.php';
 require_once '../../auth.php';
 require_once __DIR__ . '/../transaction_date_cookie.php';
+require_once __DIR__ . '/../accounting_period_guard.php';
 header('Content-Type: application/json; charset=utf-8');
 
 function payment_response(string $status, string $message, int $httpCode = 200): void
@@ -42,6 +43,8 @@ $hasClient = $clientStmt->fetch();
 $clientStmt->close();
 if (!$hasClient || (int)$locationId < 1) payment_response('error', 'Select a client before saving a payment.');
 $locationId = (int)$locationId;
+$periodError = accounting_period_date_error($con, $locationId, $date);
+if ($periodError !== null) payment_response('error', $periodError, 422);
 $userId = (int)($_SESSION['user_id'] ?? 0);
 
 try {
@@ -99,10 +102,10 @@ try {
         if ($invoiceId < 1 || !in_array($invoiceType, ['Fuel', 'Oil'], true)) throw new RuntimeException('An invoice selection is invalid.');
 
         if ($invoiceType === 'Fuel') {
-            $invoiceStmt = $con->prepare('SELECT location_id, c_id, total_sales, paid_amount FROM shed_credit_sales WHERE cs_id = ? AND status = 1 FOR UPDATE');
+            $invoiceStmt = $con->prepare('SELECT location_id, c_id, invoice_no, total_sales, paid_amount FROM shed_credit_sales WHERE cs_id = ? AND status = 1 FOR UPDATE');
             $invoiceStmt->bind_param('i', $invoiceId);
         } else {
-            $invoiceStmt = $con->prepare('SELECT location AS location_id, to_location AS c_id, CAST(issue_total AS DECIMAL(12,2)) AS total_sales, paid_amount FROM oil_sales_master WHERE iss_id = ? AND issue_status = 1 FOR UPDATE');
+            $invoiceStmt = $con->prepare('SELECT location AS location_id, to_location AS c_id, invoice_no, CAST(issue_total AS DECIMAL(12,2)) AS total_sales, paid_amount FROM oil_sales_master WHERE iss_id = ? AND issue_status = 1 FOR UPDATE');
             $invoiceStmt->bind_param('i', $invoiceId);
         }
         $invoiceStmt->execute();
@@ -118,7 +121,7 @@ try {
         $updateInvoice->execute();
         $updateInvoice->close();
 
-        $items[] = ['invoice_id' => $invoiceId, 'type' => $invoiceType, 'amount' => $amount, 'location_id' => (int)$invoice['location_id']];
+        $items[] = ['invoice_id' => $invoiceId, 'invoice_no' => (string)$invoice['invoice_no'], 'type' => $invoiceType, 'amount' => $amount, 'location_id' => (int)$invoice['location_id']];
         $locationTotals[(int)$invoice['location_id']] = ($locationTotals[(int)$invoice['location_id']] ?? 0) + $amount;
         $total += $amount;
     }
@@ -168,5 +171,22 @@ try {
 
 remember_shared_transaction_date($date);
 $action = $isEdit ? 'Customer Payment Edited' : 'Customer Payment Recorded';
-UserLog('3', $action, 'Receipt ' . $receiptNo . ' for customer ' . $customerId . '; amount ' . number_format($total, 2));
+$customerName = '';
+$customerNameStmt = $con->prepare('SELECT customer_name FROM mange_customer WHERE c_id = ? LIMIT 1');
+$customerNameStmt->bind_param('i', $customerId);
+$customerNameStmt->execute();
+$customerNameStmt->bind_result($customerName);
+$customerNameStmt->fetch();
+$customerNameStmt->close();
+$accountName = '';
+$accountNameStmt = $con->prepare('SELECT ca_name FROM acc_chart_of_accounts WHERE ca_id = ? LIMIT 1');
+$accountNameStmt->bind_param('i', $accountId);
+$accountNameStmt->execute();
+$accountNameStmt->bind_result($accountName);
+$accountNameStmt->fetch();
+$accountNameStmt->close();
+$invoiceLog = array_map(static function (array $item): string {
+    return $item['type'] . ' invoice ' . $item['invoice_no'] . ' (ID ' . $item['invoice_id'] . ') ' . number_format((float)$item['amount'], 2);
+}, $items);
+UserLog('3', $action, 'Receipt ' . $receiptNo . '; date ' . $date . '; customer ' . ($customerName ?: $customerId) . '; account ' . $accountName . '; amount ' . number_format($total, 2) . '; cheque ' . $chequeNo . '; memo ' . $memo . '; allocations: ' . implode('; ', $invoiceLog));
 payment_response('success', $isEdit ? 'Customer payment updated successfully.' : 'Payment recorded successfully.');

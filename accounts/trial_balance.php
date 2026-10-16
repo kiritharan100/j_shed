@@ -5,10 +5,22 @@
         include 'header.php';
     }
 
-$today = date('Y-m-d');
-$from_date = isset($_GET['from']) ? $_GET['from'] : date('Y-m-01', strtotime('first day of last month'));
-// $to_date   = isset($_GET['to']) ? $_GET['to'] : date('Y-m-t', strtotime('last day of last month'));
-$to_date   = isset($_GET['to']) ? $_GET['to'] : date('Y-m-t');
+$period_query = mysqli_query($con, "SELECT id, perid_from, period_to FROM accounts_accounting_period WHERE location_id = " . (int)$location_id . " AND status = 1 ORDER BY perid_from DESC");
+$periods = [];
+if ($period_query) while ($period_row = mysqli_fetch_assoc($period_query)) $periods[] = $period_row;
+$latest_period = $periods[0] ?? null;
+$period_cookie_key = 'acc_period_' . (int)$location_id;
+$period_cookie = null;
+if (!empty($_COOKIE[$period_cookie_key])) {
+    $parts = explode('|', (string)$_COOKIE[$period_cookie_key]);
+    if (count($parts) >= 3) $period_cookie = ['selection' => urldecode($parts[0]), 'start' => urldecode($parts[1]), 'end' => urldecode($parts[2])];
+}
+$from_date = $_GET['from'] ?? ($period_cookie['start'] ?? ($latest_period['perid_from'] ?? date('Y-m-01')));
+$to_date = $_GET['to'] ?? ($period_cookie['end'] ?? ($latest_period['period_to'] ?? date('Y-m-d')));
+$from_date = date('Y-m-d', strtotime($from_date));
+$to_date = date('Y-m-d', strtotime($to_date));
+$period_selection = $period_cookie['selection'] ?? ($latest_period ? 'current' : 'custom');
+if (!in_array($period_selection, ['custom', 'current'], true) && !preg_match('/^period_\d+$/', $period_selection)) $period_selection = 'custom';
 ?>
 
 <div class="content-wrapper">
@@ -19,15 +31,22 @@ $to_date   = isset($_GET['to']) ? $_GET['to'] : date('Y-m-t');
 
         <div class="card">
             <div class="card-block">
-                <form method="get" class="form-inline mb-3">
-                    <label class="mr-2">From:</label>
-                    <input type="date" name="from" class="form-control mr-3" value="<?= $from_date ?>" required>
-                    <label class="mr-2">To:</label>
-                     <?php   if (isset($_GET['module']) && $_GET['module'] === 'report') {
-                                        echo "<input type='hidden' name='module' value='report'>";  }?>
-                    <input type="date" name="to" class="form-control mr-3" value="<?= $to_date ?>" required>
-                    <button type="submit" class="btn btn-primary">Filter</button>
-                                      <button type='button' id="exportButton" filename='TRIAL_BALANCE.xlsx' class="btn btn-primary"><i class="ti-cloud-down"></i> Export</button>
+                <form method="get" id="trialBalanceFilter" class="d-flex flex-wrap align-items-center mb-3" style="gap:7px;">
+                    <?php if (isset($_GET['module']) && $_GET['module'] === 'report'): ?><input type="hidden" name="module" value="report"><?php endif; ?>
+                    <label for="trialBalancePeriod" class="mb-0">Period:</label>
+                    <select id="trialBalancePeriod" class="form-control" style="width:205px;height:32px;padding:4px 8px;font-size:13px;">
+                        <option value="custom" <?= $period_selection === 'custom' ? 'selected' : '' ?>>Custom</option>
+                        <?php if ($latest_period): ?><option value="current" data-start="<?= htmlspecialchars($latest_period['perid_from']) ?>" data-end="<?= htmlspecialchars($latest_period['period_to']) ?>" <?= $period_selection === 'current' ? 'selected' : '' ?>>Current <?= date('d/m/Y', strtotime($latest_period['perid_from'])) ?> - <?= date('d/m/Y', strtotime($latest_period['period_to'])) ?></option><?php endif; ?>
+                        <?php foreach ($periods as $period): if ($latest_period && (int)$period['id'] === (int)$latest_period['id']) continue; $period_value = 'period_' . (int)$period['id']; ?>
+                        <option value="<?= $period_value ?>" data-start="<?= htmlspecialchars($period['perid_from']) ?>" data-end="<?= htmlspecialchars($period['period_to']) ?>" <?= $period_selection === $period_value ? 'selected' : '' ?>><?= date('d/m/Y', strtotime($period['perid_from'])) ?> - <?= date('d/m/Y', strtotime($period['period_to'])) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <label for="trialBalanceFrom" class="mb-0">From:</label>
+                    <input type="date" id="trialBalanceFrom" name="from" class="form-control" style="height:32px;padding:4px 8px;font-size:13px;" value="<?= htmlspecialchars($from_date) ?>" required>
+                    <label for="trialBalanceTo" class="mb-0">To:</label>
+                    <input type="date" id="trialBalanceTo" name="to" class="form-control" style="height:32px;padding:4px 8px;font-size:13px;" value="<?= htmlspecialchars($to_date) ?>" required>
+                    <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+                    <button type='button' id="exportButton" filename='TRIAL_BALANCE.xlsx' class="btn btn-primary btn-sm"><i class="ti-cloud-down"></i> Export</button>
                 </form>
 
                 <hr>
@@ -52,7 +71,7 @@ $vat_payable = 0;
 $vat_result = mysqli_fetch_assoc(mysqli_query($con, "
     SELECT SUM(credit_vat) AS credit_vat, SUM(debit_vat) AS debit_vat
     FROM acc_transaction 
-    WHERE t_date < '$to_date' AND location_id = '$location_id'
+    WHERE t_date < DATE_ADD('$to_date', INTERVAL 1 DAY) AND location_id = '$location_id'
 "));
 $vat_txn = floatval($vat_result['credit_vat']) - floatval($vat_result['debit_vat']);
 
@@ -60,7 +79,7 @@ $vat_txn = floatval($vat_result['credit_vat']) - floatval($vat_result['debit_vat
 $vat_paid = mysqli_fetch_assoc(mysqli_query($con, "
     SELECT SUM(debit)  AS paid 
     FROM acc_transaction 
-    WHERE ca_id = 47 AND t_date < '$to_date' AND location_id = '$location_id'
+    WHERE ca_id = 47 AND t_date < DATE_ADD('$to_date', INTERVAL 1 DAY) AND location_id = '$location_id'
 "));
 $vat_paid_amt = floatval($vat_paid['paid']);
 
@@ -90,7 +109,7 @@ while ($acc = mysqli_fetch_assoc($accounts)) {
         $res = mysqli_fetch_assoc(mysqli_query($con, "
             SELECT SUM(debit) AS debit, SUM(credit) AS credit 
             FROM acc_transaction 
-            WHERE ca_id = '$ca_id' AND t_date <= '$to_date' and location_id ='$location_id'
+            WHERE ca_id = '$ca_id' AND t_date < DATE_ADD('$to_date', INTERVAL 1 DAY) and location_id ='$location_id'
         "));
         $debit = floatval($res['debit']);
         $credit = floatval($res['credit']);
@@ -99,7 +118,7 @@ while ($acc = mysqli_fetch_assoc($accounts)) {
         $has_txn = mysqli_fetch_assoc(mysqli_query($con, "
             SELECT COUNT(*) AS count 
             FROM acc_transaction 
-            WHERE ca_id = '$ca_id' AND t_date <= '$to_date' and location_id ='$location_id'
+            WHERE ca_id = '$ca_id' AND t_date < DATE_ADD('$to_date', INTERVAL 1 DAY) and location_id ='$location_id'
         "))['count'];
 
         if ($has_txn == 0) continue;
@@ -127,7 +146,7 @@ while ($acc = mysqli_fetch_assoc($accounts)) {
         $res_period = mysqli_fetch_assoc(mysqli_query($con, "
             SELECT SUM(debit) AS debit, SUM(credit) AS credit 
             FROM acc_transaction 
-            WHERE ca_id = '$ca_id' AND t_date BETWEEN '$from_date' AND '$to_date' and location_id ='$location_id'
+            WHERE ca_id = '$ca_id' AND t_date >= '$from_date' AND t_date < DATE_ADD('$to_date', INTERVAL 1 DAY) and location_id ='$location_id'
         "));
         $debit = floatval($res_period['debit']);
         $credit = floatval($res_period['credit']);
@@ -180,6 +199,24 @@ if (round($adjusted_profit_bf, 2) != 0.00) {
 </div>
 <script>
     $(document).ready(function() {
+   const periodCookieName = 'acc_period_<?= (int)$location_id ?>';
+   function saveTrialBalancePeriod() {
+       const value = [$('#trialBalancePeriod').val(), $('#trialBalanceFrom').val(), $('#trialBalanceTo').val()].map(encodeURIComponent).join('|');
+       document.cookie = periodCookieName + '=' + value + '; path=/; max-age=' + (60 * 60 * 24 * 365) + '; SameSite=Lax';
+   }
+   $('#trialBalancePeriod').on('change', function() {
+       const option = $(this).find(':selected');
+       if (this.value !== 'custom') {
+           $('#trialBalanceFrom').val(option.data('start'));
+           $('#trialBalanceTo').val(option.data('end'));
+       }
+       saveTrialBalancePeriod();
+   });
+   $('#trialBalanceFrom,#trialBalanceTo').on('change', function() {
+       $('#trialBalancePeriod').val('custom');
+       saveTrialBalancePeriod();
+   });
+   $('#trialBalanceFilter').on('submit', saveTrialBalancePeriod);
    $('#example').DataTable({
         "pageLength": 100
     });

@@ -281,6 +281,10 @@ $('#chequeForm').on('submit', function(e) {
   })
   .then(res => res.text())
   .then(data => {
+    if (data.trim().startsWith('ERROR:')) {
+      notify('danger', 'Transaction date rejected', data.trim().replace(/^ERROR:\s*/, ''));
+      return;
+    }
     notify('success', 'Saved', data);
     setTimeout(() => location.reload(), 1000);
   })

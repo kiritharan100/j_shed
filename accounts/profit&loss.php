@@ -8,13 +8,27 @@
     }
 
 
-$from_date = isset($_GET['from']) ? $_GET['from'] : date('Y-m-01', strtotime('first day of last month'));
-$to_date = isset($_GET['to']) ? $_GET['to'] : date('Y-m-t', strtotime('last day of last month'));
+$period_query = mysqli_query($con, "SELECT id, perid_from, period_to FROM accounts_accounting_period WHERE location_id = " . (int)$location_id . " AND status = 1 ORDER BY perid_from DESC");
+$periods = [];
+if ($period_query) while ($period_row = mysqli_fetch_assoc($period_query)) $periods[] = $period_row;
+$latest_period = $periods[0] ?? null;
+$period_cookie_key = 'acc_period_' . (int)$location_id;
+$period_cookie = null;
+if (!empty($_COOKIE[$period_cookie_key])) {
+  $parts = explode('|', (string)$_COOKIE[$period_cookie_key]);
+  if (count($parts) >= 3) $period_cookie = ['selection' => urldecode($parts[0]), 'start' => urldecode($parts[1]), 'end' => urldecode($parts[2])];
+}
+$from_date = $_GET['from'] ?? ($period_cookie['start'] ?? ($latest_period['perid_from'] ?? date('Y-m-01')));
+$to_date = $_GET['to'] ?? ($period_cookie['end'] ?? ($latest_period['period_to'] ?? date('Y-m-d')));
+$from_date = date('Y-m-d', strtotime($from_date));
+$to_date = date('Y-m-d', strtotime($to_date));
+$period_selection = $period_cookie['selection'] ?? ($latest_period ? 'current' : 'custom');
+if (!in_array($period_selection, ['custom', 'current'], true) && !preg_match('/^period_\d+$/', $period_selection)) $period_selection = 'custom';
  $g_profit = 0;
 function getBalanceAsAt($ca_id, $to) {
   global $con;
    global $con, $location_id;
-  $sql = "SELECT IFNULL(SUM(debit), 0) AS total_debit, IFNULL(SUM(credit), 0) AS total_credit FROM acc_transaction WHERE ca_id = $ca_id AND t_date <= '$to' AND status = 1 AND location_id = '$location_id'";
+  $sql = "SELECT IFNULL(SUM(debit), 0) AS total_debit, IFNULL(SUM(credit), 0) AS total_credit FROM acc_transaction WHERE ca_id = $ca_id AND t_date < DATE_ADD('$to', INTERVAL 1 DAY) AND status = 1 AND location_id = '$location_id'";
   $res = mysqli_query($con, $sql);
   $row = mysqli_fetch_assoc($res);
   return floatval($row['total_debit']) - floatval($row['total_credit']);
@@ -23,7 +37,7 @@ function getBalanceAsAt($ca_id, $to) {
 function getAmount($ca_id, $field, $from, $to) {
   global $con;
   global $con, $location_id;
-  $sql = "SELECT SUM($field) as total FROM acc_transaction WHERE ca_id = $ca_id AND t_date BETWEEN '$from' AND '$to' AND status = 1 AND location_id = '$location_id'";
+  $sql = "SELECT SUM($field) as total FROM acc_transaction WHERE ca_id = $ca_id AND t_date >= '$from' AND t_date < DATE_ADD('$to', INTERVAL 1 DAY) AND status = 1 AND location_id = '$location_id'";
   $res = mysqli_query($con, $sql);
   if (!$res) return 0;
   $row = mysqli_fetch_assoc($res);
@@ -50,7 +64,7 @@ function getGroupedExpenses($group) {
   return ['items' => $items, 'total' => $total];
 }
 
-$vat_query = "SELECT IFNULL(SUM(debit_Vat), 0) as total_debit_vat, IFNULL(SUM(credit_vat), 0) as total_credit_vat FROM acc_transaction WHERE t_date BETWEEN '$from_date' AND '$to_date' AND status = 1 AND location_id = '$location_id'";
+$vat_query = "SELECT IFNULL(SUM(debit_Vat), 0) as total_debit_vat, IFNULL(SUM(credit_vat), 0) as total_credit_vat FROM acc_transaction WHERE t_date >= '$from_date' AND t_date < DATE_ADD('$to_date', INTERVAL 1 DAY) AND status = 1 AND location_id = '$location_id'";
 $vat_res = mysqli_query($con, $vat_query);
 $vat_data = mysqli_fetch_assoc($vat_res);
 $vat_value = $vat_data['total_debit_vat'] - $vat_data['total_credit_vat'];
@@ -185,13 +199,22 @@ $net_profit = $gross_profit - $total_expenses;
       <div class="card-block">
 <div class='no-print'>
 
-        <form method="get" class="form-inline mb-3">
-      <label>From:</label>
-      <input type="date" name="from" class="form-control mx-2" value="<?= $from_date ?>">
-      <label>To:</label>
-      <input type="date" name="to" class="form-control mx-2" value="<?= $to_date ?>">
+        <form method="get" id="profitLossFilter" class="form-inline mb-3" style="gap:7px;">
+      <?php if (isset($_GET['module']) && $_GET['module'] === 'report'): ?><input type="hidden" name="module" value="report"><?php endif; ?>
+      <label for="profitLossPeriod">Period:</label>
+      <select id="profitLossPeriod" class="form-control" style="width:205px;height:32px;padding:4px 8px;font-size:13px;">
+        <option value="custom" <?= $period_selection === 'custom' ? 'selected' : '' ?>>Custom</option>
+        <?php if ($latest_period): ?><option value="current" data-start="<?= htmlspecialchars($latest_period['perid_from']) ?>" data-end="<?= htmlspecialchars($latest_period['period_to']) ?>" <?= $period_selection === 'current' ? 'selected' : '' ?>>Current <?= date('d/m/Y', strtotime($latest_period['perid_from'])) ?> - <?= date('d/m/Y', strtotime($latest_period['period_to'])) ?></option><?php endif; ?>
+        <?php foreach ($periods as $period): if ($latest_period && (int)$period['id'] === (int)$latest_period['id']) continue; $period_value = 'period_' . (int)$period['id']; ?>
+        <option value="<?= $period_value ?>" data-start="<?= htmlspecialchars($period['perid_from']) ?>" data-end="<?= htmlspecialchars($period['period_to']) ?>" <?= $period_selection === $period_value ? 'selected' : '' ?>><?= date('d/m/Y', strtotime($period['perid_from'])) ?> - <?= date('d/m/Y', strtotime($period['period_to'])) ?></option>
+        <?php endforeach; ?>
+      </select>
+      <label for="profitLossFrom">From:</label>
+      <input type="date" id="profitLossFrom" name="from" class="form-control mx-1" style="height:32px;padding:4px 8px;font-size:13px;" value="<?= htmlspecialchars($from_date) ?>" required>
+      <label for="profitLossTo">To:</label>
+      <input type="date" id="profitLossTo" name="to" class="form-control mx-1" style="height:32px;padding:4px 8px;font-size:13px;" value="<?= htmlspecialchars($to_date) ?>" required>
       <button type="submit" class="btn btn-primary">Generate</button>
-      <button onclick="window.print()" class="btn btn-primary"> <i class="fa fa-print" aria-hidden="true"></i> Print</button>
+      <button type="button" onclick="window.print()" class="btn btn-primary"> <i class="fa fa-print" aria-hidden="true"></i> Print</button>
     </form>
     <hr> </div>
 
@@ -383,4 +406,26 @@ $net_profit = $gross_profit - $total_expenses;
     </div>
   </div>
 </div>
+<script>
+$(function () {
+  const cookieName = 'acc_period_<?= (int)$location_id ?>';
+  function saveProfitLossPeriod() {
+    const value = [$('#profitLossPeriod').val(), $('#profitLossFrom').val(), $('#profitLossTo').val()].map(encodeURIComponent).join('|');
+    document.cookie = cookieName + '=' + value + '; path=/; max-age=' + (60 * 60 * 24 * 365) + '; SameSite=Lax';
+  }
+  $('#profitLossPeriod').on('change', function () {
+    const option = $(this).find(':selected');
+    if (this.value !== 'custom') {
+      $('#profitLossFrom').val(option.data('start'));
+      $('#profitLossTo').val(option.data('end'));
+    }
+    saveProfitLossPeriod();
+  });
+  $('#profitLossFrom,#profitLossTo').on('change', function () {
+    $('#profitLossPeriod').val('custom');
+    saveProfitLossPeriod();
+  });
+  $('#profitLossFilter').on('submit', saveProfitLossPeriod);
+});
+</script>
 <?php include 'footer.php'; ?>

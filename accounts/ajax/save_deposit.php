@@ -2,6 +2,7 @@
 include("../../db.php");
 include("../../auth.php");
 require_once __DIR__ . '/../transaction_date_cookie.php';
+require_once __DIR__ . '/../accounting_period_guard.php';
 
 header('Content-Type: application/json');
 
@@ -29,6 +30,18 @@ if ($to_account <= 0 || $amount <= 0) {
     echo json_encode(['status' => 'error', 'message' => 'Invalid input.']);
     exit;
 }
+$period_error = accounting_period_date_error($con, (int)$location_id, (string)$t_date);
+if ($period_error !== null) {
+    echo json_encode(['status' => 'error', 'message' => $period_error]);
+    exit;
+}
+$account_name = '';
+$account_stmt = $con->prepare('SELECT ca_name FROM acc_chart_of_accounts WHERE ca_id = ? LIMIT 1');
+$account_stmt->bind_param('i', $to_account);
+$account_stmt->execute();
+$account_stmt->bind_result($account_name);
+$account_stmt->fetch();
+$account_stmt->close();
 
 if ($source_id > 0) {
     try {
@@ -56,6 +69,7 @@ if ($source_id > 0) {
         $credit->close();
         mysqli_commit($con);
         remember_shared_transaction_date($t_date);
+        UserLog('3', 'Deposit Edited', 'Deposit #' . $source_id . '; date ' . $t_date . '; amount ' . number_format($amount, 2) . '; account ' . $account_name . '; memo ' . trim((string)($_POST['memo'] ?? '')));
         echo json_encode(['status' => 'success', 'message' => 'Deposit updated successfully.']);
     } catch (Throwable $error) {
         try { mysqli_rollback($con); } catch (Throwable $rollback_error) {}
@@ -98,5 +112,6 @@ foreach ($entries as $query) {
 }
 
 remember_shared_transaction_date($t_date);
+UserLog('3', 'Deposit Recorded', 'Deposit #' . $next_id . '; date ' . $t_date . '; amount ' . number_format($amount, 2) . '; account ' . $account_name . '; memo ' . trim((string)($_POST['memo'] ?? '')));
 echo json_encode(['status' => 'success', 'message' => 'Deposit recorded successfully.']);
 ?>

@@ -21,6 +21,24 @@ if (!$has_client) {
   exit;
 }
 
+$master_stmt = $con->prepare('SELECT journal_date, memo, total_debit, total_credit FROM acc_journal WHERE id = ? AND location_id = ? AND status = 1 LIMIT 1');
+$master_stmt->bind_param('ii', $id, $location_id);
+$master_stmt->execute();
+$journal = $master_stmt->get_result()->fetch_assoc();
+$master_stmt->close();
+if (!$journal) {
+  http_response_code(404);
+  echo 'Journal not found or already cancelled.';
+  exit;
+}
+$lines_stmt = $con->prepare('SELECT a.ca_name, d.description, d.debit, d.credit FROM acc_journal_detail d LEFT JOIN acc_chart_of_accounts a ON a.ca_id = d.ca_id WHERE d.journal_id = ? AND d.status = 1');
+$lines_stmt->bind_param('i', $id);
+$lines_stmt->execute();
+$line_result = $lines_stmt->get_result();
+$line_logs = [];
+while ($line = $line_result->fetch_assoc()) $line_logs[] = trim($line['ca_name'] . ' ' . $line['description'] . ' Dr ' . number_format((float)$line['debit'], 2) . ' Cr ' . number_format((float)$line['credit'], 2));
+$lines_stmt->close();
+
  $update = $con->prepare('UPDATE acc_journal SET status = 0 WHERE id = ? AND location_id = ? AND status = 1');
  $update->bind_param('ii', $id, $location_id);
  $update->execute();
@@ -32,7 +50,7 @@ if (!$changed) {
   exit;
 }
 mysqli_query($con, "UPDATE acc_journal_detail SET status = 0 WHERE journal_id = $id");
-mysqli_query($con, "DELETE FROM acc_transaction WHERE ref_no = $id AND tra_type = 'JOURNAL'");
+mysqli_query($con, "UPDATE acc_transaction SET status = 0 WHERE ref_no = $id AND tra_type = 'JOURNAL' AND location_id = '$location_id'");
 
-UserLog("3", "Journal Cancelled", "Journal ID $id");
+UserLog('3', 'Journal Cancelled', 'Journal ID ' . $id . '; date ' . $journal['journal_date'] . '; debit ' . number_format((float)$journal['total_debit'], 2) . '; credit ' . number_format((float)$journal['total_credit'], 2) . '; memo ' . $journal['memo'] . '; lines: ' . implode('; ', $line_logs));
 echo "Journal cancelled successfully.";
