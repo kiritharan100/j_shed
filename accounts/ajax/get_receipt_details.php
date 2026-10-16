@@ -1,48 +1,47 @@
 <?php
-include("../../db.php");
-include("../../auth.php");
+require_once '../../db.php';
+require_once '../../auth.php';
+header('Content-Type: application/json; charset=utf-8');
 
-$re_id = isset($_GET['re_id']) ? intval($_GET['re_id']) : 0;
-
-if (!$re_id) {
-    echo json_encode(['error' => 'Invalid cheque ID']);
+$reId = (int)($_GET['re_id'] ?? 0);
+$clientKey = (string)($_COOKIE['client_cook'] ?? '');
+if ($reId < 1 || $clientKey === '') {
+    http_response_code(400);
+    echo json_encode(['error' => 'Invalid receipt or client.']);
     exit;
 }
 
-// Fetch cheque header
-$query = "SELECT c.*, s.customer_name AS supplier_name 
-          FROM acc_receipt c 
-          LEFT JOIN mange_customer s ON c.supplier_id = s.c_id 
-          WHERE c.re_id = '$re_id' AND c.location_id = '$location_id'
-          LIMIT 1";
-$result = mysqli_query($con, $query);
+$clientStmt = $con->prepare('SELECT c_id FROM client_registration WHERE md5_client = ? LIMIT 1');
+$clientStmt->bind_param('s', $clientKey);
+$clientStmt->execute();
+$clientStmt->bind_result($locationId);
+$hasClient = $clientStmt->fetch();
+$clientStmt->close();
+if (!$hasClient || (int)$locationId < 1) {
+    http_response_code(400);
+    echo json_encode(['error' => 'Select a client before loading this receipt.']);
+    exit;
+}
+$locationId = (int)$locationId;
 
-if (!$result || mysqli_num_rows($result) === 0) {
-    echo json_encode(['error' => 'receipt not found']);
+$receiptStmt = $con->prepare('SELECT r.*, c.customer_name AS supplier_name FROM acc_receipt r LEFT JOIN mange_customer c ON c.c_id = r.supplier_id WHERE r.re_id = ? AND r.location_id = ? LIMIT 1');
+$receiptStmt->bind_param('ii', $reId, $locationId);
+$receiptStmt->execute();
+$receiptResult = $receiptStmt->get_result();
+$receipt = $receiptResult->fetch_assoc();
+$receiptStmt->close();
+if (!$receipt) {
+    http_response_code(404);
+    echo json_encode(['error' => 'Receipt not found for the selected client.']);
     exit;
 }
 
-$cheque = mysqli_fetch_assoc($result);
-
-// Fetch receipt line details
-$detailQuery = "SELECT d.*, coa.ca_name 
-                FROM acc_receipt_detail d 
-                LEFT JOIN acc_chart_of_accounts coa ON d.dr_acc_id = coa.ca_id 
-                WHERE d.re_id = '$re_id'";
-$detailsResult = mysqli_query($con, $detailQuery);
-
+$detailStmt = $con->prepare('SELECT d.dr_acc_id, d.description, d.amount, coa.ca_name FROM acc_receipt_detail d LEFT JOIN acc_chart_of_accounts coa ON coa.ca_id = d.dr_acc_id WHERE d.re_id = ? ORDER BY d.id');
+$detailStmt->bind_param('i', $reId);
+$detailStmt->execute();
+$detailResult = $detailStmt->get_result();
 $details = [];
-while ($row = mysqli_fetch_assoc($detailsResult)) {
-    $details[] = [
-        'dr_acc_id'   => $row['dr_acc_id'],
-        'description' => $row['description'],
-        'amount'      => $row['amount'],
-        'ca_name'     => $row['ca_name']
-    ];
-}
+while ($line = $detailResult->fetch_assoc()) $details[] = $line;
+$detailStmt->close();
 
-// Return JSON response
-echo json_encode([
-    'cheque' => $cheque,
-    'details' => $details
-]);
+echo json_encode(['cheque' => $receipt, 'details' => $details], JSON_INVALID_UTF8_SUBSTITUTE);

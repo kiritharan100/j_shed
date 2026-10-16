@@ -1,108 +1,172 @@
 <?php
-include("../../db.php");
+require_once '../../db.php';
+require_once '../../auth.php';
 require_once __DIR__ . '/../transaction_date_cookie.php';
-session_start();
-$total_cash = 0;
-$total_other_cash = 0;
-$user_id = $_SESSION['user_id'] ?? 0;
-$c_id = intval($_POST['customer_id']);
-$ca_id = intval($_POST['ca_id']);
-$location_id = intval($_POST['location_id']);
-$rec_date = mysqli_real_escape_string($con, $_POST['rec_date']);
-$cheque_no = mysqli_real_escape_string($con, $_POST['cheque_no']);
-$memo = mysqli_real_escape_string($con, $_POST['memo']);
-$total_paid = floatval($_POST['total_paid']);
+header('Content-Type: application/json; charset=utf-8');
 
-$inv_ids = $_POST['inv_id'];
-$inv_types = $_POST['inv_type'];
-$amounts = $_POST['amount'];
-$loc_ids = $_POST['loc_id'];
+function payment_response(string $status, string $message, int $httpCode = 200): void
+{
+    http_response_code($httpCode);
+    echo json_encode(['status' => $status, 'message' => $message]);
+    exit;
+}
 
-// Generate receipt number
-$get_serial = "SELECT MAX(receipt_no) AS max_rec FROM acc_customer_payment WHERE location_id = '$location_id'";
-$res_serial = mysqli_query($con, $get_serial);
-$row_serial = mysqli_fetch_assoc($res_serial);
-$receipt_no = $row_serial['max_rec'] ? ($row_serial['max_rec'] + 1) : 1;
+function insert_payment_transaction(mysqli $con, int $locationId, int $accountId, string $date, int $sourceId, int $receiptNo, float $debit, float $credit, string $memo, int $userId, int $customerId, int $otherBranch = 0): void
+{
+    $stmt = $con->prepare("INSERT INTO acc_transaction (location_id, ca_id, t_date, tra_type, source, source_id, ref_no, debit, credit, vat_rate, debit_Vat, credit_vat, t_memo, credted_by, created_on, cus_id, sup_id, status, other_branch) VALUES (?, ?, ?, 'receipt', 'receipt', ?, ?, ?, ?, 0, 0, 0, ?, ?, NOW(), ?, 0, 1, ?)");
+    $stmt->bind_param('iisiiddsiii', $locationId, $accountId, $date, $sourceId, $receiptNo, $debit, $credit, $memo, $userId, $customerId, $otherBranch);
+    $stmt->execute();
+    $stmt->close();
+}
 
-// Insert master record
-$insert_master = "INSERT INTO acc_customer_payment
-  (c_id, ca_id, location_id, receipt_no, rec_amount, rec_date, pay_type, cheque_no, Memo, rec_status, record_date, user_id)
-  VALUES
-  ('$c_id', '$ca_id', '$location_id', '$receipt_no', '$total_paid', '$rec_date', 'Cash', '$cheque_no', '$memo', 1, NOW(), '$user_id')";
+$paymentId = (int)($_POST['payment_id'] ?? 0);
+$isEdit = $paymentId > 0;
+$customerId = (int)($_POST['customer_id'] ?? 0);
+$accountId = (int)($_POST['ca_id'] ?? 0);
+$date = trim((string)($_POST['rec_date'] ?? ''));
+$chequeNo = trim((string)($_POST['cheque_no'] ?? ''));
+$memo = trim((string)($_POST['memo'] ?? ''));
+$amounts = $_POST['amount'] ?? [];
+$invoiceIds = $_POST['inv_id'] ?? [];
+$invoiceTypes = $_POST['inv_type'] ?? [];
+if ($customerId < 1 || $accountId < 1 || count($amounts) !== count($invoiceIds) || count($amounts) !== count($invoiceTypes)) payment_response('error', 'Select a customer and account, then check the invoice amounts.');
+$parsedDate = DateTime::createFromFormat('!Y-m-d', $date);
+if (!$parsedDate || $parsedDate->format('Y-m-d') !== $date) payment_response('error', 'Enter a valid payment date.');
 
-  
+$clientKey = (string)($_COOKIE['client_cook'] ?? '');
+$clientStmt = $con->prepare('SELECT c_id FROM client_registration WHERE md5_client = ? LIMIT 1');
+$clientStmt->bind_param('s', $clientKey);
+$clientStmt->execute();
+$clientStmt->bind_result($locationId);
+$hasClient = $clientStmt->fetch();
+$clientStmt->close();
+if (!$hasClient || (int)$locationId < 1) payment_response('error', 'Select a client before saving a payment.');
+$locationId = (int)$locationId;
+$userId = (int)($_SESSION['user_id'] ?? 0);
 
-if (mysqli_query($con, $insert_master)) {
-  $cp_id = mysqli_insert_id($con);
-$loc_totals = [];
+try {
+    $con->begin_transaction();
+    $receiptNo = 0;
+    if ($paymentId > 0) {
+        $masterLock = $con->prepare('SELECT receipt_no, rec_status FROM acc_customer_payment WHERE cp_id = ? AND location_id = ? FOR UPDATE');
+        $masterLock->bind_param('ii', $paymentId, $locationId);
+        $masterLock->execute();
+        $existing = $masterLock->get_result()->fetch_assoc();
+        $masterLock->close();
+        if (!$existing || (int)$existing['rec_status'] !== 1) throw new RuntimeException('Payment not found or already cancelled.');
+        $receiptNo = (int)$existing['receipt_no'];
 
-
-  for ($i = 0; $i < count($inv_ids); $i++) {
-    $inv_id = intval($inv_ids[$i]);
-    $loc_id = intval($loc_ids[$i]);
-    $inv_type = mysqli_real_escape_string($con, $inv_types[$i]);
-    $amount = floatval($amounts[$i]);
-
-    if ($amount > 0) {
-      mysqli_query($con, "INSERT INTO acc_customer_payment_detail (rec_id, inv_id, inv_type, amount, rec_status)
-                          VALUES ('$cp_id', '$inv_id', '$inv_type', '$amount', 1)");
-
-      // Update paid amount in original invoice table
-      if ($inv_type == 'Fuel') {
-        mysqli_query($con, "UPDATE shed_credit_sales SET paid_amount = paid_amount + $amount WHERE cs_id = '$inv_id'");
-      } elseif ($inv_type == 'Oil') {
-        mysqli_query($con, "UPDATE oil_sales_master SET paid_amount = paid_amount + $amount WHERE iss_id = '$inv_id'");
-      }
-
-          $total_cash += $amount;
-       if (!isset($loc_totals[$loc_id])) {
-            $loc_totals[$loc_id] = 0;
+        $oldDetails = $con->prepare('SELECT inv_id, inv_type, amount FROM acc_customer_payment_detail WHERE rec_id = ? AND rec_status = 1 FOR UPDATE');
+        $oldDetails->bind_param('i', $paymentId);
+        $oldDetails->execute();
+        $oldRows = $oldDetails->get_result()->fetch_all(MYSQLI_ASSOC);
+        $oldDetails->close();
+        foreach ($oldRows as $old) {
+            $oldInvoiceId = (int)$old['inv_id'];
+            $oldAmount = (float)$old['amount'];
+            if ($old['inv_type'] === 'Fuel') $restore = $con->prepare('UPDATE shed_credit_sales SET paid_amount = GREATEST(0, paid_amount - ?) WHERE cs_id = ?');
+            elseif ($old['inv_type'] === 'Oil') $restore = $con->prepare('UPDATE oil_sales_master SET paid_amount = GREATEST(0, paid_amount - ?) WHERE iss_id = ?');
+            else continue;
+            $restore->bind_param('di', $oldAmount, $oldInvoiceId);
+            $restore->execute();
+            $restore->close();
         }
-
-         $loc_totals[$loc_id] += $amount;
-
-        if($loc_id <> $location_id){
-                $total_other_cash   += $amount;
-        }
-
-       
-
-    }
-  }
-
-
-
-  mysqli_query($con, "INSERT INTO acc_transaction (location_id, ca_id, t_date, tra_type, source, source_id, ref_no, debit, credit, t_memo, credted_by, created_on, cus_id)
-                VALUES ('$location_id', '$ca_id', '$rec_date', 'receipt', 'receipt', '$cp_id', '$receipt_no', '$total_cash', 0, 'Customer settlement $c_id  CHQ:$cheque_no , $receipt_no', '$user_id', NOW(), '$c_id')");
-  
-//   mysqli_query($con, "INSERT INTO acc_transaction (location_id, ca_id, t_date, tra_type, source, source_id, ref_no, debit, credit, t_memo, credted_by, created_on, cus_id)
-//                 VALUES ('$location_id', '20', '$rec_date', 'receipt', 'receipt', '$cp_id', '$receipt_no', '0', '$total_other_cash', 'Customer settlement $c_id , $receipt_no', '$user_id', NOW(), '$c_id')");
-
-
-  foreach ($loc_totals as $loc_id => $loc_total) {
-
-    if($loc_id == $location_id){
-  mysqli_query($con, "INSERT INTO acc_transaction (location_id, ca_id, t_date, tra_type, source, source_id, ref_no, debit, credit, t_memo, credted_by, created_on, cus_id)
-                VALUES ('$location_id', '8', '$rec_date', 'receipt', 'receipt', '$cp_id', '$receipt_no', '0', '$loc_total', 'Customer settlement $c_id CHQ:$cheque_no ,RNo: $receipt_no', '$user_id', NOW(), '$c_id')");
+        $detailsCancel = $con->prepare('UPDATE acc_customer_payment_detail SET rec_status = 0 WHERE rec_id = ? AND rec_status = 1');
+        $detailsCancel->bind_param('i', $paymentId);
+        $detailsCancel->execute();
+        $detailsCancel->close();
+        $transactionsCancel = $con->prepare("UPDATE acc_transaction SET status = 0 WHERE source = 'receipt' AND source_id = ?");
+        $transactionsCancel->bind_param('i', $paymentId);
+        $transactionsCancel->execute();
+        $transactionsCancel->close();
     } else {
-
-          mysqli_query($con, "INSERT INTO acc_transaction (location_id, ca_id, t_date, tra_type, source, source_id, ref_no, debit, credit, t_memo, credted_by, created_on, cus_id,other_branch)
-                VALUES ('$location_id', '20', '$rec_date', 'receipt', 'receipt', '$cp_id', '$receipt_no', '0', '$loc_total', 'Customer settlement other branch $loc_id  CHQ:$cheque_no, RNo: $receipt_no', '$user_id', NOW(), '$c_id','$loc_id')");
-
-
-          mysqli_query($con, "INSERT INTO acc_transaction (location_id, ca_id, t_date, tra_type, source, source_id, ref_no, debit, credit, t_memo, credted_by, created_on, cus_id,other_branch)
-                VALUES ('$loc_id', '8', '$rec_date', 'receipt', 'receipt', '$cp_id', '$receipt_no', '0', '$loc_total', 'Customer settlement other branch $location_id  CHQ:$cheque_no, RNo: $receipt_no', '$user_id', NOW(), '$c_id','$location_id')");
-
-          mysqli_query($con, "INSERT INTO acc_transaction (location_id, ca_id, t_date, tra_type, source, source_id, ref_no, debit, credit, t_memo, credted_by, created_on, cus_id,other_branch)
-                VALUES ('$loc_id', '20', '$rec_date', 'receipt', 'receipt', '$cp_id', '$receipt_no', '$loc_total' , '0', 'Customer settlement other branch $location_id  CHQ:$cheque_no , RNo: $receipt_no', '$user_id', NOW(), '$c_id','$location_id')");
-
-
+        $serial = $con->prepare('SELECT COALESCE(MAX(receipt_no), 0) + 1 FROM acc_customer_payment WHERE location_id = ? FOR UPDATE');
+        $serial->bind_param('i', $locationId);
+        $serial->execute();
+        $serial->bind_result($receiptNo);
+        $serial->fetch();
+        $serial->close();
     }
 
+    $total = 0.0;
+    $items = [];
+    $locationTotals = [];
+    foreach ($amounts as $index => $rawAmount) {
+        $amount = (float)$rawAmount;
+        if ($amount <= 0) continue;
+        $invoiceId = (int)$invoiceIds[$index];
+        $invoiceType = (string)$invoiceTypes[$index];
+        if ($invoiceId < 1 || !in_array($invoiceType, ['Fuel', 'Oil'], true)) throw new RuntimeException('An invoice selection is invalid.');
+
+        if ($invoiceType === 'Fuel') {
+            $invoiceStmt = $con->prepare('SELECT location_id, c_id, total_sales, paid_amount FROM shed_credit_sales WHERE cs_id = ? AND status = 1 FOR UPDATE');
+            $invoiceStmt->bind_param('i', $invoiceId);
+        } else {
+            $invoiceStmt = $con->prepare('SELECT location AS location_id, to_location AS c_id, CAST(issue_total AS DECIMAL(12,2)) AS total_sales, paid_amount FROM oil_sales_master WHERE iss_id = ? AND issue_status = 1 FOR UPDATE');
+            $invoiceStmt->bind_param('i', $invoiceId);
+        }
+        $invoiceStmt->execute();
+        $invoice = $invoiceStmt->get_result()->fetch_assoc();
+        $invoiceStmt->close();
+        if (!$invoice || (int)$invoice['c_id'] !== $customerId) throw new RuntimeException('An invoice does not belong to the selected customer or is no longer available.');
+        $outstanding = (float)$invoice['total_sales'] - (float)$invoice['paid_amount'];
+        if ($amount > $outstanding + 0.005) throw new RuntimeException('An entered amount exceeds the invoice balance. Reload the customer invoices and try again.');
+
+        if ($invoiceType === 'Fuel') $updateInvoice = $con->prepare('UPDATE shed_credit_sales SET paid_amount = paid_amount + ? WHERE cs_id = ?');
+        else $updateInvoice = $con->prepare('UPDATE oil_sales_master SET paid_amount = paid_amount + ? WHERE iss_id = ?');
+        $updateInvoice->bind_param('di', $amount, $invoiceId);
+        $updateInvoice->execute();
+        $updateInvoice->close();
+
+        $items[] = ['invoice_id' => $invoiceId, 'type' => $invoiceType, 'amount' => $amount, 'location_id' => (int)$invoice['location_id']];
+        $locationTotals[(int)$invoice['location_id']] = ($locationTotals[(int)$invoice['location_id']] ?? 0) + $amount;
+        $total += $amount;
+    }
+    if ($total <= 0) throw new RuntimeException('Enter a payment amount for at least one invoice.');
+    if (abs($total - (float)($_POST['total_paid'] ?? 0)) > 0.02) throw new RuntimeException('The payment total does not match the invoice amounts.');
+
+    if ($paymentId > 0) {
+        $masterUpdate = $con->prepare('UPDATE acc_customer_payment SET c_id = ?, ca_id = ?, rec_amount = ?, rec_date = ?, cheque_no = ?, Memo = ? WHERE cp_id = ? AND location_id = ?');
+        $masterUpdate->bind_param('iidsssii', $customerId, $accountId, $total, $date, $chequeNo, $memo, $paymentId, $locationId);
+        $masterUpdate->execute();
+        $masterUpdate->close();
+    } else {
+        $masterInsert = $con->prepare("INSERT INTO acc_customer_payment (c_id, ca_id, location_id, receipt_no, rec_amount, rec_date, pay_type, cheque_no, Memo, rec_status, record_date, user_id) VALUES (?, ?, ?, ?, ?, ?, 'Cash', ?, ?, 1, NOW(), ?)");
+        $masterInsert->bind_param('iiiidsssi', $customerId, $accountId, $locationId, $receiptNo, $total, $date, $chequeNo, $memo, $userId);
+        $masterInsert->execute();
+        $paymentId = (int)$con->insert_id;
+        $masterInsert->close();
+    }
+
+    foreach ($items as $item) {
+        $detailInsert = $con->prepare('INSERT INTO acc_customer_payment_detail (rec_id, inv_id, inv_type, amount, rec_status) VALUES (?, ?, ?, ?, 1)');
+        $itemInvoiceId = (int)$item['invoice_id'];
+        $itemType = (string)$item['type'];
+        $itemAmount = (float)$item['amount'];
+        $detailInsert->bind_param('iisd', $paymentId, $itemInvoiceId, $itemType, $itemAmount);
+        $detailInsert->execute();
+        $detailInsert->close();
+    }
+
+    $createdAt = date('Y-m-d H:i:s');
+    $mainMemo = "Customer settlement $customerId CHQ:$chequeNo, RNo:$receiptNo" . ($memo !== '' ? " - $memo" : '');
+    insert_payment_transaction($con, $locationId, $accountId, $date, $paymentId, $receiptNo, $total, 0, $mainMemo, $userId, $customerId);
+    foreach ($locationTotals as $invoiceLocation => $locationTotal) {
+        if ($invoiceLocation === $locationId) {
+            insert_payment_transaction($con, $locationId, 8, $date, $paymentId, $receiptNo, 0, $locationTotal, $mainMemo, $userId, $customerId);
+        } else {
+            insert_payment_transaction($con, $locationId, 20, $date, $paymentId, $receiptNo, 0, $locationTotal, "Customer settlement other branch $invoiceLocation RNo:$receiptNo", $userId, $customerId, $invoiceLocation);
+            insert_payment_transaction($con, $invoiceLocation, 8, $date, $paymentId, $receiptNo, 0, $locationTotal, "Customer settlement other branch $locationId RNo:$receiptNo", $userId, $customerId, $locationId);
+            insert_payment_transaction($con, $invoiceLocation, 20, $date, $paymentId, $receiptNo, $locationTotal, 0, "Customer settlement other branch $locationId RNo:$receiptNo", $userId, $customerId, $locationId);
+        }
+    }
+    $con->commit();
+} catch (Throwable $error) {
+    $con->rollback();
+    payment_response('error', $error->getMessage(), 500);
 }
 
-  remember_shared_transaction_date($rec_date);
-  echo json_encode(["status" => "success", "message" => "Payment recorded successfully."]);
-} else {
-  echo json_encode(["status" => "error", "message" => mysqli_error($con)]);
-}
+remember_shared_transaction_date($date);
+$action = $isEdit ? 'Customer Payment Edited' : 'Customer Payment Recorded';
+UserLog('3', $action, 'Receipt ' . $receiptNo . ' for customer ' . $customerId . '; amount ' . number_format($total, 2));
+payment_response('success', $isEdit ? 'Customer payment updated successfully.' : 'Payment recorded successfully.');

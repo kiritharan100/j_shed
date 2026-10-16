@@ -537,9 +537,10 @@ $(document).ready(function() {
   $.ajax({
     url: 'ajax/get_receipt_details.php',
     method: 'GET',
+    dataType: 'json',
     data: { re_id },
     success: function(response) {
-      const data = JSON.parse(response);
+      const data = response;
 
       if (!data || !data.cheque) {
         notify('danger', 'Error', 'Receipt not found');
@@ -617,6 +618,10 @@ $(document).ready(function() {
       $('#chequeModalLabel').text(readOnlyMode ? (isCancelled ? 'View Cancelled Receipt' : 'View Receipt') : 'Edit Receipt');
 
       $('#chequeModal').modal('show');
+    },
+    error: function(xhr) {
+      const response = xhr.responseJSON || {};
+      notify('danger', 'Error', response.error || 'Could not load receipt details.');
     }
   });
 }

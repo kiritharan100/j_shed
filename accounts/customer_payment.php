@@ -3,12 +3,35 @@ include("header.php");
 require_once __DIR__ . '/transaction_date_cookie.php';
 $transaction_date = get_shared_transaction_date();
 $banks = mysqli_query($con, "SELECT ca_id, ca_name FROM acc_chart_of_accounts WHERE ca_group='Cash in Hand' ORDER BY ca_name ASC");
-$today = date('Y-m-d');
-$start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-01', strtotime('-1 month'));
-$end_date   = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-t', strtotime('-0 month'));
-
+$period_query = mysqli_query($con, "SELECT id, perid_from, period_to FROM accounts_accounting_period WHERE location_id = " . (int)$location_id . " AND status = 1 ORDER BY perid_from DESC");
+$periods = [];
+if ($period_query) while ($period_row = mysqli_fetch_assoc($period_query)) $periods[] = $period_row;
+$latest_period = $periods[0] ?? null;
+$period_cookie_key = 'acc_period_' . (int)$location_id;
+$period_cookie = null;
+if (!empty($_COOKIE[$period_cookie_key])) {
+  $parts = explode('|', (string)$_COOKIE[$period_cookie_key]);
+  if (count($parts) >= 3) $period_cookie = ['selection' => urldecode($parts[0]), 'start' => urldecode($parts[1]), 'end' => urldecode($parts[2])];
+}
+$start_date = $_GET['start_date'] ?? ($period_cookie['start'] ?? ($latest_period['perid_from'] ?? date('Y-m-d', strtotime('-30 days'))));
+$end_date = $_GET['end_date'] ?? ($period_cookie['end'] ?? ($latest_period['period_to'] ?? date('Y-m-d')));
+$start_date = date('Y-m-d', strtotime($start_date));
+$end_date = date('Y-m-d', strtotime($end_date));
+$period_selection = $period_cookie['selection'] ?? ($latest_period ? 'current' : 'custom');
+if (!in_array($period_selection, ['custom', 'current'], true) && !preg_match('/^period_\d+$/', $period_selection)) $period_selection = 'custom';
 
 ?>
+
+<style>
+  #paymentFilterForm label { font-size: 13px; font-weight: 600; white-space: nowrap; }
+  #paymentFilterForm .form-control { height: 32px; padding: 4px 8px; font-size: 13px; }
+  #paymentFilterForm #paymentPeriod { width: 205px !important; }
+  #paymentFilterForm #paymentStartDate, #paymentFilterForm #paymentEndDate { width: 145px; }
+  #paymentFilterForm .btn { height: 32px; padding: 4px 11px; font-size: 13px; line-height: 22px; }
+  #example tbody tr { height: 25px !important; }
+  #example tbody td { padding: 1px 5px !important; height: 25px !important; font-size: 13px; line-height: 1 !important; vertical-align: middle; }
+  #example select.payment-action.form-control.form-control-sm { width: 100px; height: 21px !important; min-height: 21px !important; padding: 0 4px !important; background: #fff !important; border: 1px solid #ced4da; border-radius: 3px; font-size: 11px; line-height: 1 !important; }
+</style>
 
 <div class="content-wrapper">
   <div class="container-fluid">
@@ -18,14 +41,23 @@ $end_date   = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-t', strto
 
     <div class="card">
       <div class="card-block">
-         <form method="get" class="form-inline mb-3">
-          <label class="mr-2">From:</label>
-          <input type="date" name="start_date" class="form-control mr-3" value="<?= $start_date ?>" required>
-          <label class="mr-2">To:</label>
-          <input type="date" name="end_date" class="form-control mr-3" value="<?= $end_date ?>" required>
-          <button type="submit" class="btn btn-info">Filter</button>
-          <button class="btn btn-primary float-right ml-auto" type="button" onclick="openPaymentModal()">New Payment</button>
-        </form>
+        <div id="paymentFilterForm" class="d-flex flex-wrap align-items-center mb-3" style="gap:7px;padding:9px 10px;background:#f7f8fa;border:1px solid #dee2e6;border-radius:4px;">
+          <button type="button" class="btn btn-success btn-sm" onclick="openPaymentModal()">+ New Payment</button>
+          <label for="paymentPeriod" class="mb-0">Period</label>
+          <select id="paymentPeriod" class="form-control form-control-sm">
+            <option value="custom" <?= $period_selection === 'custom' ? 'selected' : '' ?>>Custom</option>
+            <?php if ($latest_period): ?><option value="current" data-start="<?= htmlspecialchars($latest_period['perid_from']) ?>" data-end="<?= htmlspecialchars($latest_period['period_to']) ?>" <?= $period_selection === 'current' ? 'selected' : '' ?>>Current <?= date('d/m/Y', strtotime($latest_period['perid_from'])) ?> - <?= date('d/m/Y', strtotime($latest_period['period_to'])) ?></option><?php endif; ?>
+            <?php foreach ($periods as $period): if ($latest_period && (int)$period['id'] === (int)$latest_period['id']) continue; $period_value = 'period_' . (int)$period['id']; ?>
+            <option value="<?= $period_value ?>" data-start="<?= htmlspecialchars($period['perid_from']) ?>" data-end="<?= htmlspecialchars($period['period_to']) ?>" <?= $period_selection === $period_value ? 'selected' : '' ?>><?= date('d/m/Y', strtotime($period['perid_from'])) ?> - <?= date('d/m/Y', strtotime($period['period_to'])) ?></option>
+            <?php endforeach; ?>
+          </select>
+          <label for="paymentStartDate" class="mb-0">From</label>
+          <input type="date" id="paymentStartDate" class="form-control form-control-sm" value="<?= htmlspecialchars($start_date) ?>">
+          <label for="paymentEndDate" class="mb-0">To</label>
+          <input type="date" id="paymentEndDate" class="form-control form-control-sm" value="<?= htmlspecialchars($end_date) ?>">
+          <button type="button" id="paymentFilterButton" class="btn btn-primary btn-sm">Filter</button>
+          <label class="mb-0 ml-2"><input type="checkbox" id="showCancelledPayments"> Show Cancelled</label>
+        </div>
 <hr>
 
          <table  id='example' class="table table-bordered table-hover">
@@ -37,47 +69,13 @@ $end_date   = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-t', strto
               <th>Customer</th>
               <th>Cheque No</th>
               <th>Amount</th>
+              <th>Status</th>
               <th>Action</th>
             </tr>
           </thead>
-          <tbody>
-            <?php
-            $query = "
-              SELECT cp.*, c.customer_name 
-              FROM acc_customer_payment cp
-              LEFT JOIN mange_customer c ON cp.c_id = c.c_id
-              WHERE cp.rec_date BETWEEN '$start_date' AND '$end_date' AND location_id = '$location_id'
-              ORDER BY cp.rec_date DESC
-            ";
-            $res = mysqli_query($con, $query);
-            $i = 1;
-            while ($row = mysqli_fetch_assoc($res)) {
-                $rec_amount_formatted = number_format($row['rec_amount'], 2);
-              echo "<tr>
-                      <td>{$i}</td>
-                      <td>{$row['receipt_no']}</td>
-                      <td>{$row['rec_date']}</td>
-                      <td>{$row['customer_name']}</td>
-                      <td align='center'>{$row['cheque_no']}</td>  
-                           <td align='right'>{$rec_amount_formatted}</td>
-                      <td>
-                        <div class='dropdown'>
-                          <button class='btn btn-secondary dropdown-toggle btn-sm' type='button' data-toggle='dropdown'>
-                            Action
-                          </button>
-                          <div class='dropdown-menu'>
-                           <a class='dropdown-item' href=\"javascript:void(0)\" onclick=\"viewReceipt({$row['cp_id']})\">View</a>
-                            <a class='dropdown-item text-danger' href='#'>Cancel</a>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>";
-              $i++;
-            }
-            ?>
-          </tbody>
+          <tbody></tbody>
         </table>
-        <!-- Table for listing customer payments (View/Edit/Delete - to be implemented later) -->
+        <div class="text-right font-weight-bold" id="paymentTotal">Total Payments: 0.00</div>
       </div>
     </div>
   </div>
@@ -106,8 +104,9 @@ $end_date   = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-t', strto
   <div class="modal-dialog modal-xl" role="document" style=' max-width: 900px;'>
     <div class="modal-content">
       <form id="paymentForm" class="processing_form">
+        <input type="hidden" name="payment_id" id="payment_id" value="">
         <div class="modal-header">
-          <h5 class="modal-title">Record Customer Payment</h5>
+        <h5 class="modal-title" id="paymentModalTitle">Record Customer Payment</h5>
           <!-- <button type="button" class="close" data-dismiss="modal">&times;</button> -->
         </div>
         <div class="modal-body">
@@ -141,7 +140,7 @@ $end_date   = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-t', strto
 
             <div class="col-md-2">
               <label>Cheque No</label>
-              <input type="text" name="cheque_no" class="form-control" value="" required>
+              <input type="text" name="cheque_no" id="payment_cheque_no" class="form-control" value="" required>
               <input type="hidden" name="location_id" value="<?php echo $location_id;?>">
             </div>
 
@@ -203,14 +202,72 @@ $end_date   = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-t', strto
 function viewReceipt(id) {
   $('#viewContent').html('<p class="text-center"><i class="fa fa-spinner fa-spin"></i> Loading...</p>');
   $('#viewModal').modal('show');
-  $.get('cus_payment/get_customer_payment_view.php', { id }, function(res) {
-    $('#viewContent').html(res);
-  });
+  $.getJSON('ajax/get_customer_payment_details.php', {id:id}).done(function(data) {
+    const p=data.payment, esc=paymentEscape;
+    let html=`<div class="table-responsive"><table class="table table-sm table-bordered"><tr><th>Receipt No</th><td>${esc(p.receipt_no)}</td><th>Date</th><td>${esc(p.rec_date)}</td></tr><tr><th>Customer</th><td>${esc(p.customer_name)}</td><th>Amount</th><td>${(parseFloat(p.rec_amount)||0).toFixed(2)}</td></tr><tr><th>Cheque No</th><td>${esc(p.cheque_no)}</td><th>Status</th><td>${parseInt(p.rec_status,10)===1?'Posted':'Cancelled'}</td></tr><tr><th>Memo</th><td colspan="3">${esc(p.Memo)}</td></tr></table><table class="table table-sm table-bordered"><thead><tr><th>Invoice</th><th>Type</th><th>Date</th><th>Bill</th><th>Paid</th></tr></thead><tbody>`;
+    (data.details||[]).forEach(d=>{html+=`<tr><td>${esc(d.invoice_no)}</td><td>${esc(d.inv_type)}</td><td>${esc(d.invoice_date)}</td><td class="text-right">${(parseFloat(d.org_amount)||0).toFixed(2)}</td><td class="text-right">${(parseFloat(d.amount)||0).toFixed(2)}</td></tr>`;});
+    html+='</tbody></table></div>'; $('#viewContent').html(html);
+  }).fail(function(xhr) { $('#viewContent').html('<div class="alert alert-danger">' + paymentEscape(xhr.responseJSON?.error || 'Could not load payment details.') + '</div>'); });
+}
+
+function paymentEscape(value) { return $('<div>').text(value == null ? '' : String(value)).html(); }
+
+function editPayment(id) {
+  $.getJSON('ajax/get_customer_payment_details.php', {id: id}).done(function(data) {
+    if (!data.payment) { notify('danger', 'Error', 'Payment details were not returned.'); return; }
+    const p = data.payment;
+    $('#paymentForm')[0].reset();
+    $('#payment_id').val(p.cp_id);
+    $('#paymentModalTitle').text('Edit Customer Payment');
+    $('#customer_id').append(new Option(p.customer_name || 'Customer', p.c_id, true, true)).trigger('change.select2');
+    $('#bank_account').val(p.ca_id).prop('disabled', false);
+    updateChequeField();
+    $('#paymentForm [name="rec_date"]').val(String(p.rec_date).substring(0, 10));
+    $('#paymentForm [name="cheque_no"]').val(p.cheque_no || '');
+    $('#paymentForm [name="memo"]').val(p.Memo || '');
+    let html = '', total = 0;
+    (data.details || []).forEach(function(d, i) {
+      const amount = parseFloat(d.amount) || 0; total += amount;
+      html += `<tr><td><input type="checkbox" class="pay_check" data-index="${i}" checked></td>
+        <td>${paymentEscape(d.invoice_no)}<input type="hidden" name="inv_id[]" value="${parseInt(d.inv_id,10)}"><input type="hidden" name="loc_id[]" value="${parseInt(d.loc_id,10)||0}"><input type="hidden" name="inv_type[]" value="${paymentEscape(d.inv_type)}"></td>
+        <td>${paymentEscape(d.invoice_date)}</td><td>${paymentEscape(d.inv_type)}</td><td>${paymentEscape(d.supply_by)}</td><td>${paymentEscape(d.order_no)}</td><td>${paymentEscape(d.vehicle_no)}</td>
+        <td class="text-right">${(parseFloat(d.org_amount)||0).toFixed(2)}</td><td class="text-right">${(parseFloat(d.amount_due)||0).toFixed(2)}</td>
+        <td><input type="text" name="amount[]" class="form-control text-right pay_input" data-index="${i}" value="${amount.toFixed(2)}"></td></tr>`;
+    });
+    $('#invoiceTable tbody').html(html); bindInvoiceInputs();
+    $('#total_paid').val(total.toFixed(2)).removeAttr('max');
+    if (String(p.ca_id) === '44') {
+      $.post('cus_payment/get_customer_advance.php', {customer_id:p.c_id}, function(balance) {
+        $('#total_paid').attr('max', ((parseFloat(balance)||0) + total).toFixed(2));
+      });
+    }
+    $('.processing_button1').text('Update');
+    $('#paymentModal').modal('show');
+  }).fail(function(xhr) { notify('danger', 'Error', xhr.responseJSON?.error || 'Could not load payment for editing.'); });
+}
+
+function cancelPayment(id) {
+  const proceed = function() {
+    $.post('ajax/cancel_customer_payment.php', {cp_id: id}, function(res) {
+      if (res.status === 'success') { notify('success', 'Cancelled', res.message); paymentTable.ajax.reload(null, false); }
+      else notify('danger', 'Error', res.message || 'Could not cancel payment.');
+    }, 'json').fail(function(xhr) { notify('danger', 'Error', xhr.responseJSON?.message || 'Could not cancel payment.'); });
+  };
+  if (window.Swal) Swal.fire({title:'Cancel payment?', text:'This will reverse the invoice allocations.', icon:'warning', showCancelButton:true, confirmButtonText:'Yes, cancel'}).then(r => { if (r.isConfirmed) proceed(); });
+  else if (confirm('Cancel this payment and reverse its invoice allocations?')) proceed();
 }
 </script>
 
 <script>
+  function updateChequeField() {
+    const accountName = ($('#bank_account option:selected').text() || '').trim().toLowerCase();
+    const cashInHand = accountName.includes('cash in hand');
+    $('#payment_cheque_no').prop('disabled', cashInHand).prop('required', !cashInHand);
+    if (cashInHand) $('#payment_cheque_no').val('');
+  }
+
   $('#bank_account').on('change', function () {
+  updateChequeField();
   const selectedBank = $(this).val();
   const customerId = $('#customer_id').val();
 
@@ -233,6 +290,9 @@ function viewReceipt(id) {
 function openPaymentModal() {
   $('#paymentModal').modal('show');
   $('#paymentForm')[0].reset();
+  $('#payment_id').val('');
+  $('#paymentModalTitle').text('Record Customer Payment');
+  $('.processing_button1').text('Save');
   $('#customer_id').val('').trigger('change');
   $('#invoiceTable tbody').html('');
   $('#total_paid').val('0.00');
@@ -335,7 +395,7 @@ $('#customer_id').on('change', function () {
 // });
 
 function bindInvoiceInputs() {
-  $('.pay_check').on('change', function() {
+  $('.pay_check').off('change.payment').on('change.payment', function() {
     const idx = $(this).data('index');
     const amt = parseFloat($(this).closest('tr').find('td:eq(8)').text().replace(/,/g, ''));
     if ($(this).is(':checked')) {
@@ -346,7 +406,7 @@ function bindInvoiceInputs() {
     updateTotal();
   });
 
-  $('.pay_input').on('input', function() {
+  $('.pay_input').off('input.payment').on('input.payment', function() {
     updateTotal();
   });
 }
@@ -396,7 +456,7 @@ if (total_value === '' || parseFloat(total_value) === 0) {
       if (res.status === 'success') {
         notify('success', 'Success', res.message);
         $('#paymentModal').modal('hide');
-        setTimeout(() => location.reload(), 1000);
+        setTimeout(() => paymentTable.ajax.reload(null, false), 500);
       } else {
         notify('danger', 'Error', res.message);
       }
@@ -405,12 +465,43 @@ if (total_value === '' || parseFloat(total_value) === 0) {
       notify('danger', 'Server Error', 'Could not process the request.');
     },
     complete: function() {
-      button.prop('disabled', false).html('Save');
+      button.prop('disabled', false).html($('#payment_id').val() ? 'Update' : 'Save');
     }
   });
 });
 </script>
 
+<script>
+let paymentTable;
+function setPaymentPeriodCookie() {
+  const sel = $('#paymentPeriod').val();
+  const value = [sel, $('#paymentStartDate').val(), $('#paymentEndDate').val()].map(encodeURIComponent).join('|');
+  document.cookie = 'acc_period_<?= (int)$location_id ?>=' + value + '; path=/; max-age=' + (60*60*24*365) + '; SameSite=Lax';
+}
+$(function() {
+  paymentTable = $('#example').DataTable({
+    processing:true, serverSide:true, pageLength:50, order:[[2,'desc']],
+    ajax:{url:'ajax/list_customer_payments.php', type:'POST', data:function(d) {
+      d.start_date=$('#paymentStartDate').val(); d.end_date=$('#paymentEndDate').val();
+      d.show_cancelled=$('#showCancelledPayments').is(':checked') ? 1 : 0;
+    }, dataSrc:function(json) { $('#paymentTotal').text('Total Payments: ' + (json.totalPayments || '0.00')); return json.data || []; }},
+    columns:[{data:'index'},{data:'receipt_no'},{data:'date'},{data:'customer'},{data:'cheque_no'},{data:'amount',className:'text-right'},{data:'status'},{data:'action',orderable:false,searchable:false}],
+    autoWidth:false, createdRow:function(row) { $(row).find('td').css({padding:'2px 5px',height:'25px',fontSize:'13px',lineHeight:'1.1'}); }
+  });
+  $('#paymentFilterButton').on('click', function() { setPaymentPeriodCookie(); paymentTable.ajax.reload(); });
+  $('#showCancelledPayments').on('change', function() { paymentTable.ajax.reload(); });
+  $('#paymentPeriod').on('change', function() {
+    const option=$(this).find(':selected');
+    if ($(this).val() !== 'custom') { $('#paymentStartDate').val(option.data('start')); $('#paymentEndDate').val(option.data('end')); }
+    setPaymentPeriodCookie();
+  });
+  $('#paymentStartDate,#paymentEndDate').on('change', function() { $('#paymentPeriod').val('custom'); setPaymentPeriodCookie(); });
+  $('#example').on('change', '.payment-action', function() {
+    const action=$(this).val(), id=$(this).data('id'); $(this).val('');
+    if (action==='view') viewReceipt(id); else if (action==='edit') editPayment(id); else if (action==='cancel') cancelPayment(id);
+  });
+});
+</script>
 
 
 <?php include("footer.php"); ?>
