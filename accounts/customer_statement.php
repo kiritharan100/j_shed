@@ -11,6 +11,7 @@ $customers = mysqli_query($con, "SELECT c_id, customer_name FROM mange_customer 
 $c_id = isset($_GET['c_id']) ? intval($_GET['c_id']) : 0;
 $from_date = $_GET['from'] ?? date('Y-m-01');
 $to_date = $_GET['to'] ?? date('Y-m-d');
+$show_opening_balance = isset($_GET['op']) && (string)$_GET['op'] === '1';
 
 $customer = $c_id ? mysqli_fetch_assoc(mysqli_query($con, "SELECT customer_name, customer_address FROM mange_customer WHERE c_id = $c_id")) : ['customer_name' => '', 'customer_address' => ''];
 $letter_head = mysqli_fetch_assoc(mysqli_query($con, "SELECT * FROM letter_head"));
@@ -69,7 +70,7 @@ $letter_head = mysqli_fetch_assoc(mysqli_query($con, "SELECT * FROM letter_head"
                     <label class="mr-2">Show OpeningBalance:</label>
                     <input type="checkbox" name="op" 
                     <?php 
-                    if($_REQUEST['op'] == 1) { echo "checked"; }
+                    if($show_opening_balance) { echo "checked"; }
                     ?> class="form-control mr-2" value="1"  > ---
                     
                     
@@ -90,7 +91,7 @@ $letter_head = mysqli_fetch_assoc(mysqli_query($con, "SELECT * FROM letter_head"
     <div class="text-center mb-3">
         <h4 class="mb-1"><?= $letter_head['entity'] ?></h4>
         <!--<h4 class="mb-1">(<?= $letter_head['reg_no'] ?>)</h4>-->
-        <h4 class="mb-1"><?php if($_REQUEST['op'] == 1) { echo "Outstanding "; } ?>Customer Statement <?php echo $_REQUEST['from']."~".$_REQUEST['to'];  ?> </h4>
+        <h4 class="mb-1"><?php if($show_opening_balance) { echo "Outstanding "; } ?>Customer Statement <?= htmlspecialchars($from_date . '~' . $to_date) ?> </h4>
     </div>
 
  
@@ -99,7 +100,7 @@ $letter_head = mysqli_fetch_assoc(mysqli_query($con, "SELECT * FROM letter_head"
         <table class="table table-bordered data-table">
             <thead class="thead-light">       <tr>
             <th colspan='3' style="width: 25%;">Statement Date Range:</th>
-            <td colspan='2'><?php echo $_REQUEST['from']."~".$_REQUEST['to'];  ?>  </td>
+            <td colspan='2'><?= htmlspecialchars($from_date . '~' . $to_date) ?>  </td>
         </tr>
         <tr>
             <th colspan='3'>Name of the Account Holder:</th>
@@ -138,7 +139,7 @@ $letter_head = mysqli_fetch_assoc(mysqli_query($con, "SELECT * FROM letter_head"
                 
              
 
-                if ($bf > 0 && $_REQUEST['op'] == 1) {
+                if ($bf > 0 && $show_opening_balance) {
                     echo "<tr>
                         <td colspan='4'><strong>Brought Forward Balance</strong></td>
                         <td class='text-right'><strong>" . number_format($bf, 2) . "</strong></td>
