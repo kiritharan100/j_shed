@@ -20,6 +20,12 @@ if (!in_array($period_selection, ['custom', 'current'], true) && !preg_match('/^
 
 ?>
 
+<style>
+  #example tbody tr { height: 25px !important; }
+  #example tbody td { padding: 1px 5px !important; height: 25px !important; font-size: 13px; line-height: 1 !important; vertical-align: middle; }
+  #example select.journal-action.form-control.form-control-sm { min-width: 100px; width: 100px; height: 21px !important; min-height: 21px !important; padding: 0 4px !important; color: #333; background-color: #fff !important; border: 1px solid #ced4da; border-radius: 3px; font-size: 11px; line-height: 1 !important; }
+</style>
+
 <div class="content-wrapper">
   <div class="container-fluid">
     <div class="main-header"><h5>Accounts | Journal Entries</h5></div>
@@ -66,7 +72,7 @@ if (!in_array($period_selection, ['custom', 'current'], true) && !preg_match('/^
   <div class="modal-dialog modal-xl" role="document" style=' max-width: 1140px;'> 
     <form id="journalForm" class="processing_form">
       <div class="modal-content">
-        <div class="modal-header"><h5 class="modal-title">Journal Entry</h5></div>
+        <div class="modal-header"><h5 class="modal-title" id="journalModalTitle">Journal Entry</h5></div>
         <div class="modal-body">
           <div class="row mb-2">
             <div class="col-md-3"><label>Date</label><input type="date" name="journal_date" class="form-control" value="<?= htmlspecialchars($transaction_date) ?>"></div>
@@ -111,6 +117,11 @@ if (!in_array($period_selection, ['custom', 'current'], true) && !preg_match('/^
 function openJournalModal() {
   $('#journalForm')[0].reset();
   $('#journalForm input[name=id]').remove();
+  $('#journalForm input, #journalForm select, #journalForm textarea').prop('disabled', false);
+  $('#journalForm .processing_button').show();
+  $('#journalForm .modal-footer').show();
+  $('#deleteJournalBtn, #cancelledAlert').remove();
+  $('#journalModalTitle').text('Journal Entry');
   $('#journal_lines tbody').html('');
   loadAccountsOnce(); // <-- call the new function here
   
@@ -276,9 +287,22 @@ function clearOpposite(currentInput, targetName) {
 
 
 
- function editJournal(id) {
-  $.get('ajax/get_journal_details.php', { id }, function(res) {
-    const data = JSON.parse(res);
+function ensureJournalAccounts(callback) {
+  if (accountOptions.trim() !== '') {
+    callback();
+    return;
+  }
+  $.get('ajax/fetch_account_list.php', function(response) {
+    accountOptions = response || '';
+    callback();
+  }).fail(function() {
+    notify('danger', 'Error', 'Could not load accounts for this journal.');
+  });
+}
+
+function editJournal(id, readOnly = false) {
+  ensureJournalAccounts(function() {
+    $.getJSON('ajax/get_journal_details.php', { id }, function(data) {
     if (!data.journal) {
       notify('danger', 'Error', 'Journal not found.');
       return;
@@ -286,6 +310,11 @@ function clearOpposite(currentInput, targetName) {
 
     const j = data.journal;
     const lines = data.details;
+    $('#journalModalTitle').text(readOnly ? 'View Journal' : 'Edit Journal');
+    $('#journalForm input, #journalForm select, #journalForm textarea').prop('disabled', false);
+    $('#journalForm .processing_button').show();
+    $('#journalForm .modal-footer').show();
+    $('#deleteJournalBtn, #cancelledAlert').remove();
 
     $('input[name="journal_date"]').val(j.journal_date);
     $('input[name="memo"]').val(j.memo);
@@ -308,50 +337,121 @@ function clearOpposite(currentInput, targetName) {
       $('input[name="id"]').val(j.id);
     }
 
-    // Enable form if journal is active
-    if (j.status == 0) {
+    // Cancelled entries and view mode are read-only.
+    if (j.status == 0 || readOnly) {
       $('#journalForm input, #journalForm select, #journalForm textarea').prop('disabled', true);
-      $('#journalForm .modal-footer').hide();
-      if (!$('#cancelledAlert').length) {
+      $('#journalForm .processing_button').hide();
+      if (j.status == 0 && !readOnly && !$('#cancelledAlert').length) {
         $('.modal-body').prepend('<div id="cancelledAlert" class="alert alert-danger">This journal is cancelled and cannot be edited.</div>');
       }
     } else {
       $('#journalForm input, #journalForm select, #journalForm textarea').prop('disabled', false);
-      $('#journalForm .modal-footer').show();
-      $('#cancelledAlert').remove();
-      if (!$('#deleteJournalBtn').length) {
-        $('.modal-footer').prepend(`<button type="button" id="deleteJournalBtn" class="btn btn-danger mr-auto">Delete</button>`);
-        $('#deleteJournalBtn').on('click', function() {
-          Swal.fire({
-            title: 'Are you sure?',
-            text: "This will cancel the journal.",
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#d33',
-            confirmButtonText: 'Yes, cancel it!'
-          }).then((result) => {
-            if (result.isConfirmed) {
-              $.post('ajax/delete_journal.php', { id: j.id }, function(resp) {
-                notify('success', 'Cancelled', resp);
-                setTimeout(() => location.reload(), 1200);
-              });
-            }
-          });
-        });
-      }
+      $('#journalForm .processing_button').show();
     }
 
     $('#journalModal').modal('show');
-    
-     
+    }).fail(function() {
+      notify('danger', 'Error', 'Could not load journal details.');
+    });
   });
- 
 }
 
-$(document).ready(function() {
-  openJournalModal();
-  
+let journalTable;
+function saveJournalPeriodCookie() {
+  const values = [$('#accountingPeriodSelect').val() || 'custom', $('#journalStartDate').val(), $('#journalEndDate').val()]
+    .map(value => encodeURIComponent(value || '')).join('|');
+  document.cookie = <?= json_encode($period_cookie_key) ?> + '=' + values + '; path=/; max-age=' + (180 * 86400) + '; SameSite=Lax';
+}
+
+function reloadJournalTable() {
+  saveJournalPeriodCookie();
+  if (journalTable) journalTable.ajax.reload();
+}
+
+$(function() {
+  journalTable = $('#example').DataTable({
+    processing: true,
+    serverSide: true,
+    searching: true,
+    pageLength: 25,
+    lengthMenu: [[25, 50, 100, 500], [25, 50, 100, 500]],
+    order: [[1, 'desc']],
+    ajax: {
+      url: 'ajax/list_journals.php',
+      type: 'POST',
+      data: function(request) {
+        request.start_date = $('#journalStartDate').val();
+        request.end_date = $('#journalEndDate').val();
+        request.show_deleted = $('#showDeletedJournals').is(':checked') ? 1 : 0;
+      },
+      error: function(xhr) {
+        const response = xhr.responseJSON || {};
+        notify('danger', 'Journal list error', response.error || 'Could not load journal entries.');
+      }
+    },
+    columns: [
+      { data: 'index', orderable: false, searchable: false },
+      { data: 'journal_date' },
+      { data: 'ref_no' },
+      { data: 'memo' },
+      { data: 'amount', className: 'text-right' },
+      { data: 'status', orderable: false },
+      { data: 'action', orderable: false, searchable: false }
+    ],
+    createdRow: function(row, data) {
+      if (Number(data.status_value) === 0) $(row).addClass('table-danger');
+    }
+  });
+
+  saveJournalPeriodCookie();
+  $('#accountingPeriodSelect').on('change', function() {
+    const option = $(this).find(':selected');
+    if (this.value !== 'custom') {
+      $('#journalStartDate').val(option.data('start'));
+      $('#journalEndDate').val(option.data('end'));
+    }
+    reloadJournalTable();
+  });
+  $('#journalFilterButton').on('click', function() {
+    $('#accountingPeriodSelect').val('custom');
+    reloadJournalTable();
+  });
+  $('#journalStartDate, #journalEndDate').on('change', function() {
+    $('#accountingPeriodSelect').val('custom');
+    reloadJournalTable();
+  });
+  $('#showDeletedJournals').on('change', reloadJournalTable);
+  $('#journalExportButton').on('click', function() {
+    const rows = journalTable.rows({ search: 'applied' }).data().toArray();
+    const values = [['#', 'Journal Date', 'Ref No', 'Memo', 'Amount', 'Status'], ...rows.map(row => [row.index, row.journal_date, row.ref_no, row.memo, row.amount, row.status])];
+    if (!window.XLSX) { notify('danger', 'Export unavailable', 'The spreadsheet library did not load.'); return; }
+    const sheet = XLSX.utils.aoa_to_sheet(values);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, 'Journals');
+    XLSX.writeFile(workbook, 'Journal_list_' + $('#journalStartDate').val() + '_' + $('#journalEndDate').val() + '.xlsx');
+  });
+});
+
+$(document).on('change', '.journal-action', function() {
+  const action = this.value;
+  const id = Number($(this).data('id'));
+  const status = Number($(this).data('status'));
+  $(this).val('');
+  if (action === 'view') editJournal(id, true);
+  if (action === 'edit' && status === 1) editJournal(id, false);
+  if (action === 'cancel' && status === 1) {
+    const confirmation = window.Swal && typeof window.Swal.fire === 'function'
+      ? window.Swal.fire({ title: 'Cancel journal?', text: 'This will cancel the journal entry.', icon: 'warning', showCancelButton: true, confirmButtonText: 'Yes, cancel it' }).then(result => result.isConfirmed)
+      : Promise.resolve(window.confirm('Cancel this journal entry?'));
+    confirmation.then(function(confirmed) {
+      if (!confirmed) return;
+      $.post('ajax/delete_journal.php', { id: id }, function(message) {
+        notify('success', 'Cancelled', message);
+        journalTable.ajax.reload(null, false);
+      }).fail(function() { notify('danger', 'Error', 'Could not cancel this journal.'); });
     });
+  }
+});
 </script>
 
 <?php include("footer.php"); ?>
